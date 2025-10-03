@@ -1,0 +1,43 @@
+cat > .gitignore << 'EOF'
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Данные (слишком большие для git)
+data/raw/
+data/ocr/
+data/structured/
+data/db/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Модели
+models/
+
+# Логи
+*.log
+
+# Временные файлы
+*.tmp
+.cache/
+
+# Jupyter
+.ipynb_checkpoints/
+EOF

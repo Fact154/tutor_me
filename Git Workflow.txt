@@ -1,0 +1,591 @@
+# Git Workflow - RAG система для школьных учебников
+
+## Структура проекта
+
+```
+tutor_rag/
+├── .gitignore
+├── .python-version          # Python 3.11
+├── README.md
+├── requirements.txt
+├── config.py
+├── 1_ocr_extract.py
+├── 2_structure_data.py
+├── 3_create_embeddings.py
+├── 4_rag_query.py
+├── utils/
+│   ├── __init__.py
+│   ├── pdf_processor.py
+│   └── ocr_handler.py
+└── data/
+    ├── raw/              # PDF учебники (НЕ в git)
+    ├── ocr/              # Результаты OCR (НЕ в git)
+    ├── structured/       # JSON структуры (НЕ в git)
+    └── db/               # ChromaDB (НЕ в git)
+```
+
+---
+
+## Шаг 1: Инициализация проекта
+
+```bash
+# Создаём директорию проекта
+mkdir tutor_rag
+cd tutor_rag
+
+# Инициализируем git
+git init
+
+# Устанавливаем Python 3.11
+echo "3.11" > .python-version
+
+# Создаём виртуальное окружение
+python3.11 -m venv venv
+source venv/bin/activate  # На Windows: venv\Scripts\activate
+
+# Создаём структуру директорий
+mkdir -p utils data/{raw,ocr,structured,db}
+```
+
+---
+
+## Шаг 2: Создаём .gitignore
+
+```bash
+cat > .gitignore << 'EOF'
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Данные (слишком большие для git)
+data/raw/
+data/ocr/
+data/structured/
+data/db/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Модели
+models/
+
+# Логи
+*.log
+
+# Временные файлы
+*.tmp
+.cache/
+
+# Jupyter
+.ipynb_checkpoints/
+EOF
+```
+
+---
+
+## Шаг 3: Создаём requirements.txt
+
+```bash
+cat > requirements.txt << 'EOF'
+# OCR
+paddleocr==2.8.0
+paddlepaddle==2.6.2
+opencv-python==4.8.1.78
+pillow==10.1.0
+
+# PDF обработка
+PyMuPDF==1.23.8
+pdf2image==1.16.3
+
+# Векторизация
+sentence-transformers==2.2.2
+chromadb==0.4.18
+
+# LLM
+ollama==0.1.6
+
+# Утилиты
+numpy==1.24.3
+pandas==2.1.4
+tqdm==4.66.1
+pydantic==2.5.2
+EOF
+```
+
+---
+
+## Шаг 4: Устанавливаем зависимости
+
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+---
+
+## Шаг 5: Создаём README.md
+
+```bash
+cat > README.md << 'EOF'
+# RAG система для школьных учебников
+
+Система для работы с учебниками по математике и истории для 5-7 классов с использованием RAG (Retrieval-Augmented Generation).
+
+## Требования
+
+- Python 3.11
+- Ollama с моделью qwen2.5:3b
+- ~5 GB свободного места для моделей и данных
+
+## Установка
+
+1. Клонируйте репозиторий:
+```bash
+git clone <repository-url>
+cd tutor_rag
+```
+
+2. Создайте виртуальное окружение:
+```bash
+python3.11 -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+```
+
+3. Установите зависимости:
+```bash
+pip install -r requirements.txt
+```
+
+4. Установите Ollama и загрузите модель:
+```bash
+# Установка Ollama: https://ollama.ai
+ollama pull qwen2.5:3b
+```
+
+## Использование
+
+### 1. Подготовка учебников
+
+Поместите PDF учебники в `data/raw/`:
+```
+data/raw/
+├── tkacheva_math_5_part1.pdf
+├── math_6_vilenkin.pdf
+└── history_5_vigasin.pdf
+```
+
+### 2. Запуск пайплайна
+
+#### Шаг 1: OCR - извлечение текста
+```bash
+python 1_ocr_extract.py
+```
+
+#### Шаг 2: Структурирование данных
+```bash
+python 2_structure_data.py
+```
+
+#### Шаг 3: Создание embeddings и загрузка в ChromaDB
+```bash
+python 3_create_embeddings.py
+```
+
+#### Шаг 4: Запуск RAG системы
+```bash
+# Интерактивный режим
+python 4_rag_query.py
+
+# Разовый запрос
+python 4_rag_query.py математика 5 "Как сложить дроби?"
+```
+
+## Архитектура
+
+1. **OCR** - PaddleOCR для распознавания текста из PDF
+2. **Структурирование** - Парсинг и разбиение на смысловые chunks
+3. **Векторизация** - SentenceTransformers (ru-en-RoSBERTa)
+4. **Хранилище** - ChromaDB для векторного поиска
+5. **LLM** - Qwen 2.5 3B через Ollama
+
+## Конфигурация
+
+Настройки в `config.py`:
+- Пути к данным
+- Параметры OCR
+- Модели для embeddings
+- Настройки ChromaDB
+- Параметры Ollama
+
+## Структура данных
+
+### Метаданные учебника
+```json
+{
+  "title": "Математика. 5 класс",
+  "author": "Ткачёва М.В.",
+  "year": 2023,
+  "grade": 5,
+  "subject": "математика"
+}
+```
+
+### Chunk документа
+```json
+{
+  "chunk_id": "math_5_ch1_p4_1",
+  "metadata": {
+    "page": 4,
+    "chapter": 1,
+    "grade": 5,
+    "subject": "математика"
+  },
+  "content": {
+    "text": "...",
+    "formulas": ["a + b = c"]
+  }
+}
+```
+
+## Лицензия
+
+MIT
+EOF
+```
+
+---
+
+## Шаг 6: Первый коммит
+
+```bash
+# Добавляем все файлы проекта
+git add .gitignore
+git add .python-version
+git add requirements.txt
+git add README.md
+git add config.py
+git add utils/
+git add 1_ocr_extract.py
+git add 2_structure_data.py
+git add 3_create_embeddings.py
+git add 4_rag_query.py
+
+# Создаём первый коммит
+git commit -m "Initial commit: RAG система для учебников
+
+- Структура проекта
+- OCR извлечение текста (PaddleOCR)
+- Структурирование данных в chunks
+- Векторизация и ChromaDB
+- RAG query система с Ollama
+- Python 3.11, обновлённые зависимости"
+```
+
+---
+
+## Шаг 7: Создаём ветки для разработки
+
+```bash
+# Создаём основную ветку для разработки
+git branch develop
+git checkout develop
+
+# Ветки для фич
+git branch feature/ocr-improvements
+git branch feature/history-support
+git branch feature/web-interface
+git branch feature/evaluation
+```
+
+---
+
+## Git Flow для разработки
+
+### Работа над новой фичей
+
+```bash
+# 1. Создаём ветку от develop
+git checkout develop
+git pull origin develop
+git checkout -b feature/новая-фича
+
+# 2. Работаем над фичей
+# ... делаем изменения ...
+
+# 3. Коммиты
+git add .
+git commit -m "feat: описание новой функциональности"
+
+# 4. Пушим ветку
+git push origin feature/новая-фича
+
+# 5. Создаём Pull Request в develop
+# ... через GitHub/GitLab ...
+
+# 6. После review мерджим в develop
+git checkout develop
+git merge feature/новая-фича
+git push origin develop
+```
+
+---
+
+### Типы коммитов (Conventional Commits)
+
+```bash
+# Новая функциональность
+git commit -m "feat: добавлена поддержка учебников истории"
+
+# Исправление бага
+git commit -m "fix: исправлена ошибка OCR для формул"
+
+# Документация
+git commit -m "docs: обновлён README с инструкцией по установке"
+
+# Рефакторинг
+git commit -m "refactor: оптимизирован процесс chunking"
+
+# Тесты
+git commit -m "test: добавлены тесты для pdf_processor"
+
+# Стиль кода
+git commit -m "style: форматирование кода по PEP8"
+
+# Производительность
+git commit -m "perf: ускорена векторизация chunks"
+
+# Конфигурация
+git commit -m "chore: обновлены зависимости в requirements.txt"
+```
+
+---
+
+## Релиз версии
+
+```bash
+# 1. Создаём ветку релиза
+git checkout develop
+git checkout -b release/v1.0.0
+
+# 2. Обновляем версию в коде
+# ... в config.py или __init__.py ...
+
+# 3. Финальные правки
+git commit -m "chore: bump version to 1.0.0"
+
+# 4. Мерджим в main
+git checkout main
+git merge release/v1.0.0
+
+# 5. Создаём тег
+git tag -a v1.0.0 -m "Release v1.0.0: Первая стабильная версия"
+
+# 6. Мерджим обратно в develop
+git checkout develop
+git merge release/v1.0.0
+
+# 7. Пушим всё
+git push origin main develop --tags
+```
+
+---
+
+## Hotfix (срочное исправление)
+
+```bash
+# 1. Создаём ветку от main
+git checkout main
+git checkout -b hotfix/critical-bug
+
+# 2. Исправляем баг
+# ... код ...
+git commit -m "fix: критическое исправление в OCR"
+
+# 3. Мерджим в main
+git checkout main
+git merge hotfix/critical-bug
+
+# 4. Создаём тег
+git tag -a v1.0.1 -m "Hotfix v1.0.1: Исправление OCR"
+
+# 5. Мерджим в develop
+git checkout develop
+git merge hotfix/critical-bug
+
+# 6. Пушим
+git push origin main develop --tags
+```
+
+---
+
+## Полезные команды
+
+```bash
+# Проверка статуса
+git status
+
+# История коммитов
+git log --oneline --graph --all
+
+# Откат изменений
+git checkout -- <файл>
+
+# Удаление неотслеживаемых файлов
+git clean -fd
+
+# Просмотр изменений
+git diff
+
+# Создание stash
+git stash
+git stash pop
+
+# Squash коммитов перед PR
+git rebase -i HEAD~3
+
+# Обновление из удалённого репозитория
+git fetch origin
+git rebase origin/develop
+```
+
+---
+
+## Работа с remote репозиторием
+
+```bash
+# Добавление remote
+git remote add origin https://github.com/username/tutor_rag.git
+
+# Первый push
+git push -u origin main
+
+# Push всех веток
+git push origin --all
+
+# Push тегов
+git push origin --tags
+```
+
+---
+
+## .github/workflows/ci.yml (опционально)
+
+Для автоматизации CI/CD:
+
+```yaml
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Lint with flake8
+      run: |
+        pip install flake8
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    
+    - name: Run tests
+      run: |
+        python -m pytest tests/
+```
+
+---
+
+## Рекомендации
+
+1. **Коммиты должны быть атомарными** - одна логическая единица изменений
+2. **Пишите понятные commit messages** - будущий вы скажет спасибо
+3. **Используйте ветки** - не работайте напрямую в main/develop
+4. **Делайте Pull Requests** - даже если работаете один
+5. **Добавляйте .gitignore** сразу - не коммитьте data/ и models/
+6. **Тегируйте релизы** - проще откатиться к стабильной версии
+7. **Регулярно пушьте** - не храните код только локально
+
+---
+
+## Версионирование (SemVer)
+
+```
+v1.2.3
+│ │ │
+│ │ └── PATCH - исправления багов
+│ └──── MINOR - новая функциональность (обратно совместима)
+└────── MAJOR - breaking changes
+```
+
+---
+
+## Пример workflow для команды
+
+```bash
+# Утро: синхронизация
+git checkout develop
+git pull origin develop
+
+# Создание фичи
+git checkout -b feature/new-subject-support
+
+# Работа...
+git add .
+git commit -m "feat: добавлена поддержка физики"
+
+# Обед: сохранение прогресса
+git push origin feature/new-subject-support
+
+# Конец дня: создание PR
+# ... через веб-интерфейс GitHub/GitLab ...
+
+# После review и merge
+git checkout develop
+git pull origin develop
+git branch -d feature/new-subject-support
+```
+
+---
+
+## Примеры коммитов для вашего проекта
+
+```bash
+git commit -m "feat: добавлен OCR для таблиц в математике"
+git commit -m "feat: поддержка исторических дат и событий"
+git commit -m "fix: исправлена кодировка в PaddleOCR для Windows"
+git commit -m "refactor: упрощён ChunkCreator для истории"
+git commit -m "perf: оптимизация поиска в ChromaDB"
+git commit -m "docs: добавлена инструкция по добавлению новых предметов"
+git commit -m "chore: обновлён paddleocr до 2.8.0"
+git commit -m "test: тесты для математических формул"
+```
