@@ -13,8 +13,8 @@ build/
 
 # Данные (слишком большие для git)
 data/raw/
-data/ocr/
-data/structured/
+# data/ocr/
+# data/structured/
 data/db/
 
 # IDE
