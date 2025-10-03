@@ -25,7 +25,7 @@ class Config:
     CHROMA_COLLECTION_PREFIX = "textbook"
     
     # Ollama
-    OLLAMA_MODEL = "qwen2.5:3b"
+    OLLAMA_MODEL = "qwen3:8b"
     
     # Chunking параметры
     MAX_CHUNK_SIZE = 2000  # токенов
