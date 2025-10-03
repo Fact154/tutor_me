@@ -1,0 +1,79 @@
+{
+  "metadata": {
+    "title": "Математика 5 класс (Ткачева)",
+    "author": "Ткачева М.В.",
+    "year": 2023,
+    "grade": 5,
+    "subject": "математика",
+    "isbn": null,
+    "part": null
+  },
+  "config": {
+    "dpi": 600,
+    "preprocessing": true,
+    "min_confidence": 0.5
+  },
+  "total_pages_processed": 49,
+  "output_dir": "C:\\Users\\Anton\\Desktop\\llm ris\\tutor_rag\\data\\ocr\\математика_5_v2",
+  "overall_statistics": {
+    "avg_confidence": 0.8575759921690386,
+    "total_lines_recognized": 3001,
+    "suspicious_pages_count": 9
+  },
+  "suspicious_pages": [
+    {
+      "page": 0,
+      "reason": "too_short",
+      "avg_confidence": 0.7775936375061671,
+      "total_lines": 12
+    },
+    {
+      "page": 3,
+      "reason": "low_confidence",
+      "avg_confidence": 0.6891567343618812,
+      "total_lines": 41
+    },
+    {
+      "page": 4,
+      "reason": "low_confidence",
+      "avg_confidence": 0.6995723727676604,
+      "total_lines": 36
+    },
+    {
+      "page": 5,
+      "reason": "too_short",
+      "avg_confidence": 0.744087659395658,
+      "total_lines": 39
+    },
+    {
+      "page": 13,
+      "reason": "too_short",
+      "avg_confidence": 0.7840714940657982,
+      "total_lines": 65
+    },
+    {
+      "page": 44,
+      "reason": "too_short",
+      "avg_confidence": 0.8037100434303284,
+      "total_lines": 2
+    },
+    {
+      "page": 45,
+      "reason": "too_short",
+      "avg_confidence": 0.7094725168668307,
+      "total_lines": 130
+    },
+    {
+      "page": 46,
+      "reason": "too_short",
+      "avg_confidence": 0.9798525273799896,
+      "total_lines": 2
+    },
+    {
+      "page": 47,
+      "reason": "too_short",
+      "avg_confidence": 0.973373293876648,
+      "total_lines": 2
+    }
+  ]
+}

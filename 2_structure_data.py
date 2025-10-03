@@ -159,7 +159,7 @@ def structure_textbook(
 
 if __name__ == "__main__":
     # Пример обработки математики
-    ocr_dir = Config.OCR_DIR / "математика_5"
+    ocr_dir = Config.OCR_DIR / "математика_5_v2"
     
     metadata = TextbookMetadata(
         title="Математика. 5 класс. Рабочая тетрадь. Часть 1",
