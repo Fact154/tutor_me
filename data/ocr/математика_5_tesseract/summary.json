@@ -1,0 +1,37 @@
+{
+  "metadata": {
+    "title": "Математика. 5 класс. Рабочая тетрадь. Часть 1",
+    "author": "Ткачёва М.В.",
+    "year": 2023,
+    "grade": 5,
+    "subject": "математика",
+    "isbn": null,
+    "part": 1
+  },
+  "config": {
+    "preprocessing": "advanced",
+    "psm": 3,
+    "multimode": false,
+    "dpi": 600
+  },
+  "total_pages_processed": 2,
+  "output_dir": "C:\\Users\\Anton\\Desktop\\llm ris\\tutor_rag\\data\\ocr\\математика_5_tesseract",
+  "statistics": {
+    "avg_confidence": 15.954002013591744,
+    "total_characters": 627,
+    "avg_chars_per_page": 313.5,
+    "suspicious_pages_count": 2
+  },
+  "suspicious_pages": [
+    {
+      "page": 4,
+      "confidence": 21.77007299270073,
+      "text_length": 597
+    },
+    {
+      "page": 5,
+      "confidence": 10.137931034482758,
+      "text_length": 30
+    }
+  ]
+}

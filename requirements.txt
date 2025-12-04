@@ -1,6 +1,7 @@
 # OCR
 paddleocr==2.8.0
 paddlepaddle==2.6.2
+pytesseract==0.3.10
 opencv-python==4.8.1.78
 pillow==10.1.0
 
@@ -20,3 +21,10 @@ numpy==1.24.3
 pandas==2.1.4
 tqdm==4.66.1
 pydantic==2.5.2
+
+# Дополнительные зависимости для Tesseract
+# Примечание: Tesseract OCR должен быть установлен отдельно:
+# Windows: https://github.com/UB-Mannheim/tesseract/wiki
+# Linux: sudo apt install tesseract-ocr tesseract-ocr-rus
+#curl -L -o "D:\Tesseract-OCR\tessdata\rus.traineddata" "https://github.com/tesseract-ocr/tessdata/raw/main/rus.traineddata"
+# Mac: brew install tesseract tesseract-lang

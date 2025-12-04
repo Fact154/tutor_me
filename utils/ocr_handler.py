@@ -5,15 +5,32 @@ from typing import List, Dict, Tuple
 from pathlib import Path
 import json
 from tqdm import tqdm
+from .image_preprocessor import ImagePreprocessor
+from config import Config
 
 class OCRHandler:
     def __init__(self, lang='ru', use_gpu=False):
         self.ocr = PaddleOCR(
             use_angle_cls=True,
-            lang=lang,
+            lang='en',  # Попробуем английскую модель
             use_gpu=use_gpu,
-            show_log=False
+            show_log=True,  # Включаем логи для отладки
+            det_model_dir=None,  # Используем встроенную модель
+            rec_model_dir=None,  # Используем встроенную модель
+            cls_model_dir=None   # Используем встроенную модель
         )
+        
+        # Инициализируем ImagePreprocessor если включён
+        if Config.PREPROCESSING_ENABLED:
+            self.preprocessor = ImagePreprocessor(
+                target_dpi=Config.PREPROCESSING_TARGET_DPI,
+                enable_contrast=Config.PREPROCESSING_ENABLE_CONTRAST,
+                enable_sharpening=Config.PREPROCESSING_ENABLE_SHARPENING,
+                enable_binarization=Config.PREPROCESSING_ENABLE_BINARIZATION,
+                enable_denoising=Config.PREPROCESSING_ENABLE_DENOISING
+            )
+        else:
+            self.preprocessor = None
     
     def process_image(self, image: Image.Image) -> List[Dict]:
         """
@@ -26,16 +43,64 @@ class OCRHandler:
                 'confidence': float
             }]
         """
+        # Применяем предобработку если включена
+        if self.preprocessor is not None:
+            image = self.preprocessor.process(image)
+        
         # Конвертируем PIL Image в numpy array
         img_array = np.array(image)
         
         # OCR
         result = self.ocr.ocr(img_array, cls=True)
         
+        return self._parse_ocr_result(result)
+    
+    def extract_text_only(self, results: List[Dict]) -> str:
+        """Извлекает только текст из результатов OCR"""
+        return '\n'.join([item['text'] for item in results])
+    
+    def process_image_with_variants(self, image: Image.Image) -> Dict[str, List[Dict]]:
+        """
+        Обрабатывает изображение с разными вариантами предобработки для сравнения
+        
+        Returns:
+            Dict[str, List[Dict]]: {
+                'original': результаты без предобработки,
+                'light': результаты с лёгкой предобработкой,
+                'medium': результаты со средней предобработкой,
+                'heavy': результаты с агрессивной предобработкой
+            }
+        """
+        if self.preprocessor is None:
+            # Если предобработка отключена, возвращаем только оригинал
+            return {'original': self.process_image(image)}
+        
+        variants = {}
+        
+        # Оригинал без предобработки
+        img_array = np.array(image)
+        result = self.ocr.ocr(img_array, cls=True)
+        variants['original'] = self._parse_ocr_result(result)
+        
+        # Получаем варианты предобработки
+        processed_variants = self.preprocessor.process_with_multiple_variants(image)
+        
+        # Обрабатываем каждый вариант
+        for variant_name, variant_image in processed_variants.items():
+            if variant_name == 'original':
+                continue  # Уже обработали выше
+                
+            img_array = np.array(variant_image)
+            result = self.ocr.ocr(img_array, cls=True)
+            variants[variant_name] = self._parse_ocr_result(result)
+        
+        return variants
+    
+    def _parse_ocr_result(self, result) -> List[Dict]:
+        """Парсит результат OCR в стандартный формат"""
         if result is None or len(result) == 0:
             return []
         
-        # Парсим результаты
         parsed_results = []
         for line in result[0]:
             bbox = line[0]
@@ -48,10 +113,6 @@ class OCRHandler:
             })
         
         return parsed_results
-    
-    def extract_text_only(self, results: List[Dict]) -> str:
-        """Извлекает только текст из результатов OCR"""
-        return '\n'.join([item['text'] for item in results])
     
     def process_pdf_pages(
         self, 

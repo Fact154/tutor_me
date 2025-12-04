@@ -29,6 +29,14 @@ class Config:
     
     # Chunking параметры
     MAX_CHUNK_SIZE = 2000  # токенов
+    
+    # Image Preprocessing настройки
+    PREPROCESSING_ENABLED = True
+    PREPROCESSING_TARGET_DPI = 600
+    PREPROCESSING_ENABLE_CONTRAST = True
+    PREPROCESSING_ENABLE_SHARPENING = True
+    PREPROCESSING_ENABLE_BINARIZATION = True
+    PREPROCESSING_ENABLE_DENOISING = True
 
 class TextbookMetadata(BaseModel):
     title: str
