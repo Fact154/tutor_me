@@ -1,0 +1,17 @@
+{
+  "textbooks": [
+    {
+      "id": "math_5_tkacheva_part1",
+      "name": "Математика 5 класс. Рабочая тетрадь. Часть 1",
+      "author": "М.В. Ткачёва",
+      "publisher": "Просвещение",
+      "year": 2023,
+      "chunks_files": [
+        "promt/chancs1.txt",
+        "promt/chancs2.txt"
+      ],
+      "preprompt_file": "promt/предпромт.txt"
+    }
+  ]
+}
+

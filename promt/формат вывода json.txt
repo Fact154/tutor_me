@@ -1,0 +1,27 @@
+
+## 4. Формат вывода (JSON для базы данных)
+```json
+{
+  "task_id": "page5_task5",
+  "solution": {
+    "steps": [...],
+    "answer": "...",
+    "explanation": "..."
+  },
+  "metrics": {
+    "correctness_score": 98,
+    "confidence_score": 95,
+    "hallucination_detected": false,
+    "complexity_level": 2,
+    "explanation_quality": 4,
+    "educational_value": "medium"
+  },
+  "moderation": {
+    "requires_review": false,
+    "flags": []
+  },
+  "sources": [
+    "Таблица на стр. 5",
+    "Формула сложения"
+  ]
+}
