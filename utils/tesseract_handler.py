@@ -231,6 +231,31 @@ class TesseractHandler:
             'details': details
         }
     
+    def ocr_image(
+        self, 
+        image: Image.Image, 
+        preprocessing: str = 'advanced',
+        psm: int = 3
+    ) -> Dict:
+        """
+        Простой метод для OCR одного изображения (алиас для process_image)
+        
+        Args:
+            image: PIL Image
+            preprocessing: 'none', 'basic', 'advanced', 'aggressive'
+            psm: Page Segmentation Mode (0-13)
+        
+        Returns:
+            {'text': str, 'confidence': float, 'details': List[Dict]}
+        """
+        return self.process_image(image, preprocessing=preprocessing, psm=psm, deskew=True)
+    
+    def ocr_multimode(self, image: Image.Image) -> Dict:
+        """
+        OCR с несколькими режимами (алиас для process_image_multimode)
+        """
+        return self.process_image_multimode(image)
+    
     def process_image_multimode(self, image: Image.Image) -> Dict:
         """
         Обрабатывает изображение несколькими режимами и выбирает лучший результат
