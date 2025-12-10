@@ -23,6 +23,7 @@ sys.excepthook = handle_exception
 
 # Импортируем функции RAG из общего модуля
 from core import rag
+from core.validator import QueryValidator
 
 # Конфигурационный файл с учебниками (для совместимости)
 TEXTBOOKS_CONFIG = "textbooks_config.json"

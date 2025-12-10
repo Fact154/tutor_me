@@ -14,6 +14,7 @@ sys.path.insert(0, str(parent_dir))
 # Импортируем функции из core.rag (общий модуль RAG)
 try:
     from core import rag
+    from core.validator import QueryValidator
     # Используем функции из модуля
     find_relevant_chunks = rag.find_relevant_chunks
     format_chunks_for_prompt = rag.format_chunks_for_prompt
@@ -22,6 +23,7 @@ try:
 except ImportError as e:
     # Если не можем импортировать, создаем заглушки
     print(f"[!] Предупреждение: не удалось импортировать core.rag: {e}")
+    QueryValidator = None
     def find_relevant_chunks(*args, **kwargs):
         return []
     def format_chunks_for_prompt(*args, **kwargs):
@@ -80,6 +82,18 @@ def answer_question_simple(
             'sources': [],
             'error': error
         }
+    
+    # Валидация запроса
+    if QueryValidator:
+        validator = QueryValidator(chunks_data, doc_info)
+        is_valid, error_message = validator.validate_query(query)
+        
+        if not is_valid:
+            return {
+                'answer': error_message,
+                'sources': [],
+                'error': 'validation_failed'
+            }
     
     # Загружаем предпромт (с поддержкой режимов)
     preprompt = load_preprompt(textbook_id, preprompt_mode)

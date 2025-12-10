@@ -100,8 +100,7 @@ pydantic==2.5.2
 pydantic_core==2.14.5
 pydub==0.25.1
 Pygments==2.19.2
-PyMuPDF==1.23.8
-PyMuPDFb==1.23.7
+pymupdf==1.26.6
 pyparsing==3.2.5
 PyPika==0.48.9
 pyreadline3==3.5.4
