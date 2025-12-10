@@ -147,3 +147,4 @@ if __name__ == "__main__":
         process_chunks_file(chunks_file, embedding_manager)
     
     print("\n✓ Все данные загружены в ChromaDB")
+

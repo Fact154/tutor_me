@@ -109,7 +109,7 @@ def show_login():
 def main():
     """Главная функция"""
     
-    # Инициализация сессии
+    # Инициализация сессии (сохраняется между перезагрузками)
     if 'parent_id' not in st.session_state:
         st.session_state['parent_id'] = None
     if 'student_id' not in st.session_state:
@@ -118,6 +118,21 @@ def main():
         st.session_state['user_type'] = None
     if 'login_user_type' not in st.session_state:
         st.session_state['login_user_type'] = "Родитель"
+    
+    # Проверяем валидность сессии (на случай если данные были удалены из БД)
+    if st.session_state.get('parent_id'):
+        from database import get_parent
+        parent = get_parent(st.session_state['parent_id'])
+        if not parent:
+            st.session_state['parent_id'] = None
+            st.session_state['user_type'] = None
+    
+    if st.session_state.get('student_id'):
+        from database import get_student
+        student = get_student(st.session_state['student_id'])
+        if not student:
+            st.session_state['student_id'] = None
+            st.session_state['user_type'] = None
     
     # Навигация
     if st.session_state['user_type'] == 'parent':

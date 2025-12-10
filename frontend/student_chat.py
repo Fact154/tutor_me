@@ -203,14 +203,17 @@ def show_student_chat():
         with st.chat_message("assistant"):
             st.write(msg['llm_response'])
             
+            # Проверяем, есть ли ошибка в ответе (по формату ответа)
+            has_error = msg['llm_response'].startswith('❌') or msg['llm_response'].startswith('⚠️') or 'Ошибка' in msg['llm_response']
+            
             # Показываем оценку, если есть
             if msg['rating']:
                 st.caption(f"Оценка: {msg['rating']}/5")
                 if msg['is_best_answer']:
                     st.success("Лучший ответ")
             
-            # Кнопка оценки (если еще не оценено)
-            if not msg['rating']:
+            # Кнопка оценки (только если нет ошибки и еще не оценено)
+            if not msg['rating'] and not has_error:
                 st.caption("Оцените ответ:")
                 cols = st.columns(5)
                 for i, col in enumerate(cols, 1):
@@ -239,8 +242,11 @@ def show_student_chat():
                 
                 st.write(result['answer'])
                 
-                # Показываем источники
-                if result['sources']:
+                # Проверяем наличие ошибки
+                has_error = result.get('error') is not None or result['answer'].startswith('❌') or result['answer'].startswith('⚠️') or 'Ошибка' in result['answer']
+                
+                # Показываем источники только если нет ошибки
+                if not has_error and result['sources']:
                     with st.expander("Источники"):
                         for source in result['sources']:
                             st.write(f"Страница: {source.get('page', 'Не указана')}")
@@ -254,14 +260,15 @@ def show_student_chat():
                     llm_response=result['answer']
                 )
                 
-                # Кнопки для оценки
-                st.caption("Оцените ответ:")
-                cols = st.columns(5)
-                for i, col in enumerate(cols, 1):
-                    with col:
-                        if st.button(f"{i}", key=f"rate_new_{i}"):
-                            rate_message(message_id, i)
-                            st.rerun()
+                # Кнопки для оценки (только если нет ошибки)
+                if not has_error:
+                    st.caption("Оцените ответ:")
+                    cols = st.columns(5)
+                    for i, col in enumerate(cols, 1):
+                        with col:
+                            if st.button(f"{i}", key=f"rate_new_{i}"):
+                                rate_message(message_id, i)
+                                st.rerun()
         
         st.rerun()
 

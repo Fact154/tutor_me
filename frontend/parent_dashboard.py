@@ -109,21 +109,23 @@ def show_parent_dashboard():
         # Карточки школьников
         for idx, student in enumerate(students):
             with st.container():
-                # Основная информация
-                col1, col2, col3 = st.columns([3, 2, 1])
+                col1, col2, col3, col4 = st.columns([2.5, 1.5, 1.5, 1])
                 
                 with col1:
-                    st.markdown(f"### {student.get('full_name', 'Не указано')}")
-                    st.caption(f"Класс: {student['grade']}")
+                    st.markdown(f"**{student.get('full_name', 'Не указано')}**")
+                    st.caption(f"Класс {student['grade']}")
                 
                 with col2:
-                    st.markdown("**Логин:**")
+                    st.text("Логин")
                     st.code(student['login'], language=None)
-                    st.markdown("**Пароль:**")
-                    st.code(student['password'], language=None)
                 
                 with col3:
-                    st.write("")  # Отступ для выравнивания
+                    st.text("Пароль")
+                    st.code(student['password'], language=None)
+                
+                with col4:
+                    st.text("")  # Отступ для выравнивания с текстом
+                    st.text("")  # Дополнительный отступ
                     if st.button("Удалить", key=f"delete_{student['id']}", type="secondary", use_container_width=True):
                         if delete_student(student['id'], parent_id):
                             st.success("Школьник удален")
