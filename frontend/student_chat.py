@@ -429,112 +429,126 @@ def show_student_chat():
         
         else:
             # Обычный запрос
-            # Проверяем, не согласился ли пользователь на практику
+            # Проверяем, не согласился ли пользователь на практику (ответ на предложение)
             user_query_lower = user_query.lower().strip()
-            wants_practice = any(word in user_query_lower for word in ['да', 'хочу', 'готов', 'давай', 'попробую', 'решу'])
+            wants_practice = any(word in user_query_lower for word in ['да', 'хочу', 'готов', 'давай', 'попробую', 'решу', 'давай попробуем'])
             
-            # Добавляем вопрос пользователя в историю
-            with st.chat_message("user"):
-                st.write(user_query)
+            # Проверяем, есть ли в последнем сообщении предложение практики
+            messages = get_chat_messages(chat_id)
+            last_message = messages[-1] if messages else None
+            has_practice_offer = False
+            if last_message:
+                last_response_lower = last_message['llm_response'].lower()
+                has_practice_offer = any(phrase in last_response_lower for phrase in [
+                    'хочу попробовать', 'похожее задание', 'попробовать решить', 
+                    'готов решить', 'хотишь попробовать'
+                ])
             
-            # Получаем ответ от LLM
-            with st.chat_message("assistant"):
-                with st.spinner("Обработка запроса..."):
-                    result = answer_question_simple(
-                        query=user_query,
-                        textbook_id=current_textbook_id,
-                        grade=student['grade'],
-                        model_name=selected_model,
-                        preprompt_mode=selected_mode
-                    )
-                    
-                    st.write(result['answer'])
-                    
-                    # Проверяем наличие ошибки
-                    has_error = result.get('error') is not None or result['answer'].startswith('[X]') or result['answer'].startswith('[!]') or 'Ошибка' in result['answer']
-                    
-                    # Показываем источники только если нет ошибки
-                    if not has_error and result['sources']:
-                        with st.expander("Источники"):
-                            for source in result['sources']:
-                                st.write(f"Страница: {source.get('page', 'Не указана')}")
-                                if source.get('topic'):
-                                    st.write(f"Тема: {source['topic']}")
-                    
-                    # Сохраняем сообщение в БД
-                    message_id = add_message(
-                        chat_id=chat_id,
-                        student_query=user_query,
-                        llm_response=result['answer']
-                    )
-                    
-                    # Если пользователь согласился на практику, генерируем задание
-                    if wants_practice and not has_error:
+            # Если пользователь согласился на практику И есть предложение в последнем сообщении
+            if wants_practice and has_practice_offer and last_message:
+                # Генерируем практическое задание
+                with st.chat_message("user"):
+                    st.write(user_query)
+                
+                with st.chat_message("assistant"):
+                    with st.spinner("Генерирую практическое задание..."):
                         # Определяем уровень сложности на основе предыдущих оценок
                         complexity = get_next_complexity_level(chat_id)
                         
-                        # Генерируем практическое задание
-                        with st.spinner("Генерирую практическое задание..."):
-                            task_result = generate_practice_task(
-                                original_query=user_query,
-                                original_solution=result['answer'],
-                                textbook_id=current_textbook_id,
-                                grade=student['grade'],
-                                complexity_level=complexity,
-                                model_name=selected_model,
-                                preprompt_mode=selected_mode
+                        # Генерируем практическое задание на основе последнего решения
+                        task_result = generate_practice_task(
+                            original_query=last_message['student_query'],
+                            original_solution=last_message['llm_response'],
+                            textbook_id=current_textbook_id,
+                            grade=student['grade'],
+                            complexity_level=complexity,
+                            model_name=selected_model,
+                            preprompt_mode=selected_mode
+                        )
+                        
+                        if not task_result.get('error') and task_result.get('task_text'):
+                            # Сохраняем практическое задание
+                            task_id = add_practice_task(
+                                chat_id=chat_id,
+                                original_message_id=last_message['id'],
+                                task_text=task_result['task_text'],
+                                correct_answer=task_result['correct_answer'],
+                                complexity_level=complexity
                             )
                             
-                            if not task_result.get('error') and task_result.get('task_text'):
-                                # Сохраняем практическое задание
-                                task_id = add_practice_task(
-                                    chat_id=chat_id,
-                                    original_message_id=message_id,
-                                    task_text=task_result['task_text'],
-                                    correct_answer=task_result['correct_answer'],
-                                    complexity_level=complexity
-                                )
-                                
-                                st.info(f"**Практическое задание:**\n\n{task_result['task_text']}\n\n**Подсказка:** {task_result.get('hint', '')}\n\nВведите ваш ответ выше.")
-                            else:
-                                st.warning("Не удалось сгенерировать практическое задание. Попробуйте позже.")
-                    
-                    # Проверяем, есть ли в ответе предложение практического задания (даже если пользователь не согласился)
-                    # LLM должен всегда предлагать практику после решения
-                    if not has_error and not wants_practice:
-                        # Проверяем, есть ли в ответе предложение практики
-                        answer_lower = result['answer'].lower()
-                        if 'хочу' in answer_lower or 'попробовать' in answer_lower or 'похожее' in answer_lower:
-                            # LLM уже предложил практику в ответе, ничего не делаем
-                            pass
-                    
-                    # Кнопки для оценки (только если нет ошибки)
-                    if not has_error:
-                        st.markdown("---")
-                        # Создаем палитру для оценки
-                        rating_key = f"rating_palette_new_{message_id}"
-                        st.markdown(f"""
-                            <div id="{rating_key}" style="
-                                border: 2px solid #e0e0e0;
-                                border-radius: 8px;
-                                padding: 1rem;
-                                background-color: #f9f9f9;
-                                margin: 1rem 0;
-                            ">
-                                <h4 style="margin-top: 0; margin-bottom: 0.5rem; color: #333; font-size: 1.1rem;">ОЦЕНИТЕ ОТВЕТ</h4>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        cols = st.columns(5)
-                        for i, col in enumerate(cols, 1):
-                            with col:
-                                if st.button(
-                                    "★" * i + "☆" * (5 - i),
-                                    key=f"rate_new_{i}",
-                                    use_container_width=True,
-                                    help=f"Оценить на {i} из 5"
-                                ):
-                                    rate_message(message_id, i)
-                                    st.rerun()
+                            st.write(f"**Практическое задание:**\n\n{task_result['task_text']}")
+                            if task_result.get('hint'):
+                                st.info(f"**Подсказка:** {task_result['hint']}")
+                            st.caption("Введите ваш ответ ниже")
+                        else:
+                            st.error("Не удалось сгенерировать практическое задание. Попробуйте позже.")
+                
+                st.rerun()
             
-            st.rerun()
+            else:
+                # Обычный вопрос - отвечаем на него
+                # Добавляем вопрос пользователя в историю
+                with st.chat_message("user"):
+                    st.write(user_query)
+                
+                # Получаем ответ от LLM
+                with st.chat_message("assistant"):
+                    with st.spinner("Обработка запроса..."):
+                        result = answer_question_simple(
+                            query=user_query,
+                            textbook_id=current_textbook_id,
+                            grade=student['grade'],
+                            model_name=selected_model,
+                            preprompt_mode=selected_mode
+                        )
+                        
+                        st.write(result['answer'])
+                        
+                        # Проверяем наличие ошибки
+                        has_error = result.get('error') is not None or result['answer'].startswith('[X]') or result['answer'].startswith('[!]') or 'Ошибка' in result['answer']
+                        
+                        # Показываем источники только если нет ошибки
+                        if not has_error and result['sources']:
+                            with st.expander("Источники"):
+                                for source in result['sources']:
+                                    st.write(f"Страница: {source.get('page', 'Не указана')}")
+                                    if source.get('topic'):
+                                        st.write(f"Тема: {source['topic']}")
+                        
+                        # Сохраняем сообщение в БД
+                        message_id = add_message(
+                            chat_id=chat_id,
+                            student_query=user_query,
+                            llm_response=result['answer']
+                        )
+                        
+                        # Кнопки для оценки (только если нет ошибки)
+                        if not has_error:
+                            st.markdown("---")
+                            # Создаем палитру для оценки
+                            rating_key = f"rating_palette_new_{message_id}"
+                            st.markdown(f"""
+                                <div id="{rating_key}" style="
+                                    border: 2px solid #e0e0e0;
+                                    border-radius: 8px;
+                                    padding: 1rem;
+                                    background-color: #f9f9f9;
+                                    margin: 1rem 0;
+                                ">
+                                    <h4 style="margin-top: 0; margin-bottom: 0.5rem; color: #333; font-size: 1.1rem;">ОЦЕНИТЕ ОТВЕТ</h4>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            cols = st.columns(5)
+                            for i, col in enumerate(cols, 1):
+                                with col:
+                                    if st.button(
+                                        "★" * i + "☆" * (5 - i),
+                                        key=f"rate_new_{i}",
+                                        use_container_width=True,
+                                        help=f"Оценить на {i} из 5"
+                                    ):
+                                        rate_message(message_id, i)
+                                        st.rerun()
+                
+                st.rerun()
 
