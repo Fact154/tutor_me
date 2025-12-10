@@ -1,8 +1,25 @@
 import json
 import os
+import sys
+import logging
+import asyncio
 from typing import List, Dict, Any, Tuple
 import ollama
 import gradio as gr
+
+# Настройка логирования для подавления asyncio ошибок
+logging.getLogger("asyncio").setLevel(logging.ERROR)
+
+# Подавляем предупреждения о разрыве соединений
+def handle_exception(exc_type, exc_value, exc_traceback):
+    """Обработчик необработанных исключений"""
+    if issubclass(exc_type, (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)):
+        # Игнорируем ошибки разрыва соединения
+        return
+    # Для остальных ошибок используем стандартную обработку
+    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+sys.excepthook = handle_exception
 
 # Конфигурационный файл с учебниками
 TEXTBOOKS_CONFIG = "textbooks_config.json"
@@ -159,53 +176,124 @@ def load_preprompt(textbook_id: str = None) -> str:
     return ""
 
 def find_relevant_chunks(query: str, chunks: List[Dict], top_k: int = 3) -> List[Dict]:
-    """Находит наиболее релевантные чанки для запроса"""
-    query_lower = query.lower()
-    query_words = set(query_lower.split())
+    """Находит наиболее релевантные чанки для запроса с улучшенным поиском"""
+    import re
+    
+    # Нормализуем запрос: приводим к нижнему регистру и удаляем знаки препинания
+    query_normalized = re.sub(r'[^\w\s]', ' ', query.lower())
+    query_words = set([w for w in query_normalized.split() if len(w) > 2])  # Игнорируем короткие слова
+    
+    # Если запрос слишком короткий, используем все слова
+    if not query_words:
+        query_words = set(query_normalized.split())
     
     scored_chunks = []
     
     for chunk in chunks:
         score = 0
         
-        # Проверяем ключевые слова
-        if 'keywords' in chunk:
-            chunk_keywords = [kw.lower() for kw in chunk['keywords']]
+        # Создаём объединённый текст из всех полей чанка для более полного поиска
+        chunk_text_parts = []
+        
+        # Добавляем раздел
+        if 'section' in chunk:
+            chunk_text_parts.append(chunk['section'].lower())
+        
+        # Добавляем тему (высокий приоритет)
+        if 'topic' in chunk:
+            topic_text = chunk['topic'].lower()
+            chunk_text_parts.append(topic_text)
+            # Проверяем совпадения в теме отдельно (более высокий вес)
             for word in query_words:
-                if any(word in kw or kw in word for kw in chunk_keywords):
+                if word in topic_text:
+                    score += 4  # Увеличиваем вес темы
+                # Проверяем частичные совпадения
+                if any(word in part or part in word for part in topic_text.split()):
                     score += 2
         
-        # Проверяем содержание
+        # Добавляем ключевые слова
+        if 'keywords' in chunk:
+            keywords_text = ' '.join([kw.lower() for kw in chunk['keywords']])
+            chunk_text_parts.append(keywords_text)
+            for word in query_words:
+                if any(word in kw.lower() or kw.lower() in word for kw in chunk['keywords']):
+                    score += 3  # Увеличиваем вес ключевых слов
+        
+        # Добавляем содержание
         if 'content' in chunk:
             content_lower = chunk['content'].lower()
-            for word in query_words:
-                if word in content_lower:
-                    score += 1
+            chunk_text_parts.append(content_lower)
+            # Подсчитываем количество совпадений в содержании
+            matches = sum(1 for word in query_words if word in content_lower)
+            score += matches  # Бонус за каждое совпадение
         
-        # Проверяем тему
-        if 'topic' in chunk:
-            topic_lower = chunk['topic'].lower()
-            for word in query_words:
-                if word in topic_lower:
-                    score += 3
-        
-        # Проверяем номер задания
+        # Проверяем номер задания (самый высокий приоритет)
         if 'exercises' in chunk:
-            # Ищем упоминания номеров заданий в запросе
-            import re
             numbers = re.findall(r'\d+', query)
             for num in numbers:
                 if int(num) in chunk['exercises']:
-                    score += 5
+                    score += 10  # Очень высокий приоритет для номеров заданий
         
+        # Проверяем страницы
+        if 'pages' in chunk:
+            page_numbers = re.findall(r'\d+', chunk['pages'])
+            query_numbers = re.findall(r'\d+', query)
+            for q_num in query_numbers:
+                if any(q_num == p_num for p_num in page_numbers):
+                    score += 6
+        
+        # Дополнительная проверка: ищем совпадения в объединённом тексте
+        # Это помогает находить чанки даже если слова разбросаны по разным полям
+        if chunk_text_parts:
+            combined_text = ' '.join(chunk_text_parts)
+            # Проверяем, сколько слов из запроса встречается в чанке
+            found_words = sum(1 for word in query_words if word in combined_text)
+            if found_words > 0:
+                # Бонус за процент совпадения слов
+                match_ratio = found_words / len(query_words) if query_words else 0
+                score += int(match_ratio * 5)  # Бонус до 5 баллов за полное совпадение
+        
+        # Добавляем чанк, если есть хотя бы минимальный релевантность
         if score > 0:
             scored_chunks.append((score, chunk))
     
     # Сортируем по релевантности
     scored_chunks.sort(key=lambda x: x[0], reverse=True)
     
-    # Возвращаем top_k чанков
-    return [chunk for _, chunk in scored_chunks[:top_k]]
+    # Если нашли чанки, возвращаем top_k
+    if scored_chunks:
+        return [chunk for _, chunk in scored_chunks[:top_k]]
+    
+    # Если ничего не нашли, пробуем более мягкий поиск (частичные совпадения)
+    # Это помогает, когда запрос использует другие формулировки
+    if not scored_chunks:
+        for chunk in chunks:
+            score = 0
+            combined_text = ''
+            
+            # Собираем весь текст чанка
+            if 'section' in chunk:
+                combined_text += chunk['section'].lower() + ' '
+            if 'topic' in chunk:
+                combined_text += chunk['topic'].lower() + ' '
+            if 'keywords' in chunk:
+                combined_text += ' '.join([kw.lower() for kw in chunk['keywords']]) + ' '
+            if 'content' in chunk:
+                combined_text += chunk['content'].lower()[:500]  # Первые 500 символов
+            
+            # Проверяем частичные совпадения
+            query_clean = query_normalized.replace(' ', '')
+            for word in query_words:
+                if len(word) > 3 and word in combined_text:
+                    score += 1
+            
+            if score > 0:
+                scored_chunks.append((score, chunk))
+        
+        scored_chunks.sort(key=lambda x: x[0], reverse=True)
+        return [chunk for _, chunk in scored_chunks[:top_k]]
+    
+    return []
 
 def format_chunks_for_prompt(chunks: List[Dict]) -> str:
     """Форматирует чанки для включения в промпт"""
@@ -591,11 +679,19 @@ def main():
         """)
     
     # Запускаем интерфейс
-    demo.launch(
-        server_name="127.0.0.1",
-        server_port=7860,
-        share=False
-    )
+    try:
+        demo.launch(
+            server_name="127.0.0.1",
+            server_port=7860,
+            share=False,
+            show_error=False  # Не показывать ошибки в UI
+        )
+    except KeyboardInterrupt:
+        print("\nПриложение остановлено пользователем.")
+    except Exception as e:
+        if "10054" not in str(e) and "ConnectionResetError" not in str(type(e).__name__):
+            # Выводим только не связанные с разрывом соединения ошибки
+            print(f"Ошибка при запуске: {e}")
 
 if __name__ == "__main__":
     main()
