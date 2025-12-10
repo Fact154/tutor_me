@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import (
     authenticate_student, get_student, get_or_create_chat,
-    get_chat_messages, add_message, rate_message
+    get_chat_messages, add_message, rate_message, get_student_chats, get_chat
 )
 from rag_service import get_textbooks_list, answer_question_simple
 import ollama
@@ -62,95 +62,164 @@ def show_student_chat():
         st.error("Ошибка: данные школьника не найдены")
         return
     
-    st.title("Чат с репетитором")
+    # Получаем все существующие чаты
+    existing_chats = get_student_chats(student_id)
+    textbooks = get_textbooks_list()
     
-    # Информация о школьнике
-    with st.expander("Информация о школьнике", expanded=False):
-        st.write(f"**ФИО:** {student.get('full_name', 'Не указано')}")
-        st.write(f"**Класс:** {student['grade']}")
-        st.write(f"**Логин:** {student['login']}")
+    if not textbooks:
+        st.error("Учебники не найдены. Проверьте конфигурацию.")
+        return
     
-    # Выбор учебника и предмета
-    col1, col2 = st.columns(2)
+    textbook_options = {tb['id']: tb['name'] for tb in textbooks}
     
-    with col1:
-        textbooks = get_textbooks_list()
-        if not textbooks:
-            st.error("Учебники не найдены. Проверьте конфигурацию.")
-            return
+    # Инициализация выбранного чата из session state
+    if 'selected_chat_id' not in st.session_state:
+        if existing_chats:
+            st.session_state['selected_chat_id'] = existing_chats[0]['id']
+        else:
+            st.session_state['selected_chat_id'] = None
+    
+    # Sidebar с чатами
+    with st.sidebar:
+        st.header("Чаты")
         
-        textbook_options = {tb['name']: tb['id'] for tb in textbooks}
+        # Информация о школьнике
+        st.caption(f"{student.get('full_name', 'Не указано')} • {student['grade']} класс")
+        st.divider()
+        
+        # Список существующих чатов
+        if existing_chats:
+            st.subheader("Мои чаты", divider=False)
+            for chat in existing_chats:
+                textbook_name = textbook_options.get(chat['textbook_id'], chat['textbook_id'])
+                chat_label = f"{textbook_name}"
+                
+                # Выделяем активный чат
+                is_active = st.session_state.get('selected_chat_id') == chat['id']
+                button_type = "primary" if is_active else "secondary"
+                
+                if st.button(
+                    chat_label,
+                    key=f"chat_btn_{chat['id']}",
+                    use_container_width=True,
+                    type=button_type
+                ):
+                    st.session_state['selected_chat_id'] = chat['id']
+                    st.rerun()
+        
+        st.divider()
+        
+        # Создание нового чата
+        st.subheader("Создать чат", divider=False)
+        
+        textbook_options_list = {tb['name']: tb['id'] for tb in textbooks}
         selected_textbook_name = st.selectbox(
-            "Выберите учебник",
-            options=list(textbook_options.keys()),
-            key="textbook_select"
+            "Учебник",
+            options=list(textbook_options_list.keys()),
+            key="new_textbook_select",
+            label_visibility="collapsed"
         )
-        selected_textbook_id = textbook_options[selected_textbook_name]
+        selected_textbook_id = textbook_options_list[selected_textbook_name]
+        
+        if st.button("Создать новый чат", key="create_chat_btn", use_container_width=True):
+            # Проверяем, не существует ли уже такой чат
+            existing_chat = None
+            for chat in existing_chats:
+                if (chat['textbook_id'] == selected_textbook_id and 
+                    chat['subject'] == "математика" and 
+                    chat['grade'] == student['grade']):
+                    existing_chat = chat
+                    break
+            
+            if existing_chat:
+                st.warning("Чат с этим учебником уже существует")
+                st.session_state['selected_chat_id'] = existing_chat['id']
+                st.rerun()
+            else:
+                new_chat_id = get_or_create_chat(
+                    student_id=student_id,
+                    textbook_id=selected_textbook_id,
+                    subject="математика",
+                    grade=student['grade']
+                )
+                st.session_state['selected_chat_id'] = new_chat_id
+                st.success("Чат создан!")
+                st.rerun()
     
+    # Основная область - чат
+    chat_id = st.session_state.get('selected_chat_id')
+    
+    if not chat_id:
+        st.info("Создайте новый чат в боковой панели, чтобы начать общение")
+        return
+    
+    selected_chat = get_chat(chat_id)
+    if not selected_chat:
+        st.error("Чат не найден")
+        return
+    
+    current_textbook_id = selected_chat['textbook_id']
+    current_subject = selected_chat['subject']
+    current_textbook_name = textbook_options.get(current_textbook_id, current_textbook_id)
+    
+    # Заголовок с кнопкой выхода
+    col1, col2 = st.columns([5, 1])
+    with col1:
+        st.title("Чат с репетитором")
+        st.caption(f"{current_textbook_name} • {current_subject}")
     with col2:
-        # Для MVP - только математика
-        subject = st.selectbox(
-            "Предмет",
-            options=["математика"],
-            disabled=True,
-            key="subject_select"
-        )
+        st.write("")  # Отступ
+        st.write("")  # Отступ
+        if st.button("Выйти", key="logout_btn", use_container_width=True):
+            st.session_state['student_id'] = None
+            st.session_state['user_type'] = None
+            st.session_state['selected_chat_id'] = None
+            st.rerun()
+    
+    st.divider()
     
     # Выбор модели
-    is_connected, conn_msg = check_ollama_connection()
-    if not is_connected:
-        st.warning(f"{conn_msg}. Убедитесь, что Ollama запущен.")
-    
-    available_models = get_available_models()
-    selected_model = st.selectbox(
-        "Модель",
-        options=available_models,
-        key="model_select"
-    )
-    
-    # Получаем или создаем чат
-    chat_id = get_or_create_chat(
-        student_id=student_id,
-        textbook_id=selected_textbook_id,
-        subject=subject,
-        grade=student['grade']
-    )
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        available_models = get_available_models()
+        selected_model = st.selectbox(
+            "Модель",
+            options=available_models,
+            key="model_select"
+        )
+    with col2:
+        is_connected, conn_msg = check_ollama_connection()
+        if not is_connected:
+            st.warning(f"{conn_msg}")
     
     # Загружаем историю сообщений
     messages = get_chat_messages(chat_id)
     
     # Отображаем историю чата
-    st.markdown("---")
-    st.subheader("История чата")
-    
-    chat_container = st.container()
-    
-    with chat_container:
-        for msg in messages:
-            with st.chat_message("user"):
-                st.write(msg['student_query'])
+    for msg in messages:
+        with st.chat_message("user"):
+            st.write(msg['student_query'])
+        
+        with st.chat_message("assistant"):
+            st.write(msg['llm_response'])
             
-            with st.chat_message("assistant"):
-                st.write(msg['llm_response'])
-                
-                # Показываем оценку, если есть
-                if msg['rating']:
-                    st.write(f"Оценка: {msg['rating']}/5")
-                    if msg['is_best_answer']:
-                        st.success("Лучший ответ")
-                
-                # Кнопка оценки (если еще не оценено)
-                if not msg['rating']:
-                    st.caption("Оцените ответ:")
-                    cols = st.columns(5)
-                    for i, col in enumerate(cols, 1):
-                        with col:
-                            if st.button(f"{i}", key=f"rate_{msg['id']}_{i}"):
-                                rate_message(msg['id'], i)
-                                st.rerun()
+            # Показываем оценку, если есть
+            if msg['rating']:
+                st.caption(f"Оценка: {msg['rating']}/5")
+                if msg['is_best_answer']:
+                    st.success("Лучший ответ")
+            
+            # Кнопка оценки (если еще не оценено)
+            if not msg['rating']:
+                st.caption("Оцените ответ:")
+                cols = st.columns(5)
+                for i, col in enumerate(cols, 1):
+                    with col:
+                        if st.button(f"{i}", key=f"rate_{msg['id']}_{i}"):
+                            rate_message(msg['id'], i)
+                            st.rerun()
     
     # Поле для нового вопроса
-    st.markdown("---")
     user_query = st.chat_input("Задайте вопрос по учебнику...")
     
     if user_query:
@@ -163,7 +232,7 @@ def show_student_chat():
             with st.spinner("Обработка запроса..."):
                 result = answer_question_simple(
                     query=user_query,
-                    textbook_id=selected_textbook_id,
+                    textbook_id=current_textbook_id,
                     grade=student['grade'],
                     model_name=selected_model
                 )
@@ -174,9 +243,9 @@ def show_student_chat():
                 if result['sources']:
                     with st.expander("Источники"):
                         for source in result['sources']:
-                            st.write(f"- Страница: {source.get('page', 'Не указана')}")
+                            st.write(f"Страница: {source.get('page', 'Не указана')}")
                             if source.get('topic'):
-                                st.write(f"  Тема: {source['topic']}")
+                                st.write(f"Тема: {source['topic']}")
                 
                 # Сохраняем сообщение в БД
                 message_id = add_message(

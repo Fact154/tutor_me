@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import (
     authenticate_parent, get_parent, get_students_by_parent,
-    create_student, get_student_metrics, update_parent_telegram
+    create_student, get_student_metrics, update_parent_telegram, delete_student
 )
 import pandas as pd
 
@@ -62,11 +62,11 @@ def show_parent_dashboard():
         
         with col1:
             full_name = st.text_input("ФИО школьника", key="new_student_name", placeholder="Иванов Иван Иванович")
-            grade = st.number_input("Класс", min_value=1, max_value=11, value=5, key="new_student_grade")
+            username = st.text_input("Логин (необязательно)", key="new_student_username", placeholder="Оставьте пустым для автогенерации", help="Будет сгенерирован автоматически, если не указан")
         
         with col2:
-            username = st.text_input("Логин (необязательно, будет сгенерирован автоматически)", key="new_student_username", placeholder="Оставьте пустым для автогенерации")
-            telegram = st.text_input("Telegram школьника (необязательно)", key="new_student_telegram", placeholder="@username")
+            grade = st.number_input("Класс", min_value=1, max_value=11, value=5, key="new_student_grade")
+            telegram = st.text_input("Telegram (необязательно)", key="new_student_telegram", placeholder="@username")
         
         submitted = st.form_submit_button("Добавить школьника", use_container_width=True)
         
@@ -106,18 +106,33 @@ def show_parent_dashboard():
     if not students:
         st.info("У вас пока нет добавленных школьников. Добавьте первого выше.")
     else:
-        # Таблица школьников
-        students_data = []
-        for student in students:
-            students_data.append({
-                'ФИО': student.get('full_name', 'Не указано'),
-                'Класс': student['grade'],
-                'Логин': student['login'],
-                'Пароль': student['password']
-            })
-        
-        df = pd.DataFrame(students_data)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        # Карточки школьников
+        for idx, student in enumerate(students):
+            with st.container():
+                # Основная информация
+                col1, col2, col3 = st.columns([3, 2, 1])
+                
+                with col1:
+                    st.markdown(f"### {student.get('full_name', 'Не указано')}")
+                    st.caption(f"Класс: {student['grade']}")
+                
+                with col2:
+                    st.markdown("**Логин:**")
+                    st.code(student['login'], language=None)
+                    st.markdown("**Пароль:**")
+                    st.code(student['password'], language=None)
+                
+                with col3:
+                    st.write("")  # Отступ для выравнивания
+                    if st.button("Удалить", key=f"delete_{student['id']}", type="secondary", use_container_width=True):
+                        if delete_student(student['id'], parent_id):
+                            st.success("Школьник удален")
+                            st.rerun()
+                        else:
+                            st.error("Ошибка при удалении")
+                
+                if idx < len(students) - 1:
+                    st.divider()
     
     st.markdown("---")
     

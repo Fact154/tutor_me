@@ -253,7 +253,51 @@ def get_students_by_parent(parent_id: int) -> List[Dict[str, Any]]:
     
     return [dict(row) for row in rows]
 
+def delete_student(student_id: int, parent_id: int) -> bool:
+    """Удаляет школьника (только если он принадлежит родителю)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Проверяем, что школьник принадлежит родителю
+    cursor.execute("SELECT id FROM students WHERE id = ? AND parent_id = ?", (student_id, parent_id))
+    if not cursor.fetchone():
+        conn.close()
+        return False
+    
+    # Удаляем все связанные данные (каскадное удаление)
+    # Сначала удаляем сообщения
+    cursor.execute("""
+        DELETE FROM messages 
+        WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
+    """, (student_id,))
+    
+    # Удаляем чаты
+    cursor.execute("DELETE FROM chats WHERE student_id = ?", (student_id,))
+    
+    # Удаляем школьника
+    cursor.execute("DELETE FROM students WHERE id = ?", (student_id,))
+    
+    conn.commit()
+    conn.close()
+    return True
+
 # === ЧАТЫ ===
+
+def get_student_chats(student_id: int) -> List[Dict[str, Any]]:
+    """Получает все чаты школьника"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT * FROM chats
+        WHERE student_id = ?
+        ORDER BY created_at DESC
+    """, (student_id,))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [dict(row) for row in rows]
 
 def get_or_create_chat(student_id: int, textbook_id: str, subject: str, grade: int) -> int:
     """Получает или создает чат для школьника и учебника"""
@@ -281,6 +325,19 @@ def get_or_create_chat(student_id: int, textbook_id: str, subject: str, grade: i
     
     conn.close()
     return chat_id
+
+def get_chat(chat_id: int) -> Optional[Dict[str, Any]]:
+    """Получает информацию о чате"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM chats WHERE id = ?", (chat_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return dict(row)
+    return None
 
 def get_chat_messages(chat_id: int) -> List[Dict[str, Any]]:
     """Получает все сообщения чата"""
