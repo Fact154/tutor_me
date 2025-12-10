@@ -86,6 +86,25 @@ def init_database():
         )
     """)
     
+    # Таблица практических заданий
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS practice_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            original_message_id INTEGER,
+            task_text TEXT NOT NULL,
+            correct_answer TEXT NOT NULL,
+            student_answer TEXT,
+            grade INTEGER,
+            complexity_level INTEGER DEFAULT 1,
+            feedback TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP,
+            FOREIGN KEY (chat_id) REFERENCES chats(id),
+            FOREIGN KEY (original_message_id) REFERENCES messages(id)
+        )
+    """)
+    
     conn.commit()
     conn.close()
 
@@ -434,6 +453,103 @@ def rate_message(message_id: int, rating: int):
     conn.commit()
     conn.close()
 
+def add_practice_task(chat_id: int, original_message_id: int, task_text: str, correct_answer: str, complexity_level: int = 1) -> int:
+    """Добавляет практическое задание, возвращает ID задания"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT INTO practice_tasks (chat_id, original_message_id, task_text, correct_answer, complexity_level)
+        VALUES (?, ?, ?, ?, ?)
+    """, (chat_id, original_message_id, task_text, correct_answer, complexity_level))
+    
+    task_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    
+    return task_id
+
+def get_pending_practice_task(chat_id: int) -> Optional[Dict[str, Any]]:
+    """Получает незавершенное практическое задание для чата"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT * FROM practice_tasks
+        WHERE chat_id = ? AND student_answer IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+    """, (chat_id,))
+    
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return dict(row)
+    return None
+
+def submit_practice_answer(task_id: int, student_answer: str, grade: int, feedback: str):
+    """Сохраняет ответ ученика на практическое задание и оценку"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        UPDATE practice_tasks
+        SET student_answer = ?, grade = ?, feedback = ?, completed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, (student_answer, grade, feedback, task_id))
+    
+    conn.commit()
+    conn.close()
+
+def get_next_complexity_level(chat_id: int) -> int:
+    """Определяет следующий уровень сложности на основе последних оценок"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Получаем последние 3 оценки практических заданий
+    cursor.execute("""
+        SELECT grade, complexity_level FROM practice_tasks
+        WHERE chat_id = ? AND grade IS NOT NULL
+        ORDER BY completed_at DESC
+        LIMIT 3
+    """, (chat_id,))
+    
+    recent_grades = cursor.fetchall()
+    conn.close()
+    
+    if not recent_grades:
+        return 1  # Начинаем с уровня 1
+    
+    # Если последние оценки 4-5, увеличиваем сложность
+    # Если 1-3, оставляем тот же уровень или уменьшаем
+    avg_grade = sum(row['grade'] for row in recent_grades) / len(recent_grades)
+    last_complexity = recent_grades[0]['complexity_level']
+    
+    if avg_grade >= 4.0 and last_complexity < 5:
+        return min(last_complexity + 1, 5)
+    elif avg_grade <= 2.0 and last_complexity > 1:
+        return max(last_complexity - 1, 1)
+    else:
+        return last_complexity
+
+def get_practice_tasks_for_student(student_id: int) -> List[Dict[str, Any]]:
+    """Получает все практические задания школьника"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT * FROM practice_tasks
+        WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
+        AND student_answer IS NOT NULL
+        ORDER BY completed_at DESC
+    """, (student_id,))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [dict(row) for row in rows]
+
 # === МЕТРИКИ ===
 
 def get_student_metrics(student_id: int) -> Dict[str, Any]:
@@ -441,31 +557,52 @@ def get_student_metrics(student_id: int) -> Dict[str, Any]:
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Средняя оценка (общая)
+    # Средняя оценка (общая) - из сообщений и практических заданий
     cursor.execute("""
-        SELECT AVG(rating) as avg_rating FROM messages
-        WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
-        AND rating IS NOT NULL
-    """, (student_id,))
+        SELECT AVG(rating) as avg_rating FROM (
+            SELECT rating FROM messages
+            WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
+            AND rating IS NOT NULL
+            UNION ALL
+            SELECT grade as rating FROM practice_tasks
+            WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
+            AND grade IS NOT NULL
+        )
+    """, (student_id, student_id))
     avg_rating = cursor.fetchone()['avg_rating'] or 0
     
     # Средняя оценка за последние 7 дней
     cursor.execute("""
-        SELECT AVG(rating) as avg_rating_recent FROM messages
-        WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
-        AND rating IS NOT NULL
-        AND created_at >= datetime('now', '-7 days')
-    """, (student_id,))
+        SELECT AVG(rating) as avg_rating_recent FROM (
+            SELECT rating FROM messages
+            WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
+            AND rating IS NOT NULL
+            AND created_at >= datetime('now', '-7 days')
+            UNION ALL
+            SELECT grade as rating FROM practice_tasks
+            WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
+            AND grade IS NOT NULL
+            AND completed_at >= datetime('now', '-7 days')
+        )
+    """, (student_id, student_id))
     avg_rating_recent = cursor.fetchone()['avg_rating_recent'] or 0
     
     # Средняя оценка за предыдущие 7 дней (для сравнения)
     cursor.execute("""
-        SELECT AVG(rating) as avg_rating_previous FROM messages
-        WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
-        AND rating IS NOT NULL
-        AND created_at >= datetime('now', '-14 days')
-        AND created_at < datetime('now', '-7 days')
-    """, (student_id,))
+        SELECT AVG(rating) as avg_rating_previous FROM (
+            SELECT rating FROM messages
+            WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
+            AND rating IS NOT NULL
+            AND created_at >= datetime('now', '-14 days')
+            AND created_at < datetime('now', '-7 days')
+            UNION ALL
+            SELECT grade as rating FROM practice_tasks
+            WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
+            AND grade IS NOT NULL
+            AND completed_at >= datetime('now', '-14 days')
+            AND completed_at < datetime('now', '-7 days')
+        )
+    """, (student_id, student_id))
     avg_rating_previous = cursor.fetchone()['avg_rating_previous'] or 0
     
     # Количество дней активности (за последние 30 дней)
@@ -498,14 +635,25 @@ def get_student_metrics(student_id: int) -> Dict[str, Any]:
         rating_trend = round(avg_rating_recent - avg_rating_previous, 2)
     
     # Активность по дням (последние 14 дней для графика)
+    # Объединяем сообщения и практические задания
     cursor.execute("""
-        SELECT DATE(created_at) as date, COUNT(*) as count, AVG(rating) as avg_rating_day
-        FROM messages
-        WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
-        AND created_at >= datetime('now', '-14 days')
+        SELECT 
+            DATE(created_at) as date,
+            COUNT(*) as count,
+            AVG(rating) as avg_rating_day
+        FROM (
+            SELECT created_at, rating FROM messages
+            WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
+            AND created_at >= datetime('now', '-14 days')
+            UNION ALL
+            SELECT completed_at as created_at, grade as rating FROM practice_tasks
+            WHERE chat_id IN (SELECT id FROM chats WHERE student_id = ?)
+            AND completed_at >= datetime('now', '-14 days')
+            AND completed_at IS NOT NULL
+        )
         GROUP BY DATE(created_at)
         ORDER BY date
-    """, (student_id,))
+    """, (student_id, student_id))
     daily_activity = []
     for row in cursor.fetchall():
         daily_activity.append({

@@ -164,3 +164,184 @@ def answer_question_simple(
             'error': error_msg
         }
 
+def generate_practice_task(
+    original_query: str,
+    original_solution: str,
+    textbook_id: str,
+    grade: int,
+    complexity_level: int = 1,
+    model_name: str = "qwen3:8b",
+    preprompt_mode: str = None
+) -> Dict[str, Any]:
+    """
+    Генерирует похожее практическое задание на основе предыдущего решения
+    """
+    preprompt = load_preprompt(textbook_id, preprompt_mode)
+    
+    generation_prompt = f"""{preprompt}
+
+=== ПРЕДЫДУЩЕЕ ЗАДАНИЕ ===
+{original_query}
+
+=== РЕШЕНИЕ ПРЕДЫДУЩЕГО ЗАДАНИЯ ===
+{original_solution}
+
+=== ИНСТРУКЦИЯ ===
+Сгенерируй похожее задание с другими числами, но той же структурой и логикой.
+Уровень сложности: {complexity_level} (1-простое, 5-очень сложное)
+
+Формат ответа (строго соблюдай):
+**ЗАДАНИЕ:**
+[Текст задания]
+
+**ПРАВИЛЬНЫЙ ОТВЕТ:**
+[Полное решение с ответом]
+
+**ПОДСКАЗКА:**
+[Краткая подсказка, какой метод использовать]
+"""
+    
+    try:
+        response = ollama.chat(
+            model=model_name,
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"Ты репетитор по математике для {grade} класса. Генерируешь похожие задания для практики."
+                },
+                {
+                    "role": "user",
+                    "content": generation_prompt
+                }
+            ],
+            options={
+                'temperature': 0.5,
+                'top_p': 0.9,
+                'top_k': 40
+            }
+        )
+        
+        generated_text = response['message']['content']
+        
+        # Парсим ответ
+        import re
+        task_match = re.search(r'\*\*ЗАДАНИЕ:\*\*\s*(.*?)(?=\*\*ПРАВИЛЬНЫЙ ОТВЕТ:\*\*|\*\*ПОДСКАЗКА:\*\*|$)', generated_text, re.DOTALL)
+        answer_match = re.search(r'\*\*ПРАВИЛЬНЫЙ ОТВЕТ:\*\*\s*(.*?)(?=\*\*ПОДСКАЗКА:\*\*|$)', generated_text, re.DOTALL)
+        hint_match = re.search(r'\*\*ПОДСКАЗКА:\*\*\s*(.*?)$', generated_text, re.DOTALL)
+        
+        task_text = task_match.group(1).strip() if task_match else generated_text.split('\n\n')[0].strip()
+        correct_answer = answer_match.group(1).strip() if answer_match else ""
+        hint = hint_match.group(1).strip() if hint_match else ""
+        
+        return {
+            'task_text': task_text,
+            'correct_answer': correct_answer,
+            'hint': hint,
+            'full_text': generated_text,
+            'error': None
+        }
+    
+    except Exception as e:
+        return {
+            'task_text': "",
+            'correct_answer': "",
+            'hint': "",
+            'full_text': f"Ошибка при генерации задания: {str(e)}",
+            'error': str(e)
+        }
+
+def evaluate_practice_answer(
+    task_text: str,
+    correct_answer: str,
+    student_answer: str,
+    textbook_id: str,
+    grade: int,
+    model_name: str = "qwen3:8b",
+    preprompt_mode: str = None
+) -> Dict[str, Any]:
+    """
+    Оценивает ответ ученика на практическое задание
+    """
+    preprompt = load_preprompt(textbook_id, preprompt_mode)
+    
+    evaluation_prompt = f"""{preprompt}
+
+=== ЗАДАНИЕ ===
+{task_text}
+
+=== ПРАВИЛЬНЫЙ ОТВЕТ ===
+{correct_answer}
+
+=== ОТВЕТ УЧЕНИКА ===
+{student_answer}
+
+=== ИНСТРУКЦИЯ ===
+Оцени ответ ученика строго, но честно по шкале 1-5:
+- 5: Полностью правильное решение с объяснением
+- 4: Правильный ответ, но есть мелкие недочеты
+- 3: Частично правильное решение
+- 2: Неправильный ответ, но есть попытка решения
+- 1: Неправильный ответ без попытки решения
+
+В ответе укажи:
+**ОЦЕНКА: [1-5]**
+
+**Что правильно:** [Что ученик сделал верно]
+
+**Ошибки:** [Что неправильно, конкретно и без прикрас]
+
+**Как нужно было решить:** [Краткое правильное решение]
+
+**Что повторить:** [Какие темы нужно повторить]
+"""
+    
+    try:
+        response = ollama.chat(
+            model=model_name,
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"Ты строгий, но справедливый учитель математики для {grade} класса. Оценивай ответы честно, без завышения оценок."
+                },
+                {
+                    "role": "user",
+                    "content": evaluation_prompt
+                }
+            ],
+            options={
+                'temperature': 0.2,  # Очень низкая температура для строгой оценки
+                'top_p': 0.8,
+                'top_k': 30
+            }
+        )
+        
+        evaluation = response['message']['content']
+        
+        # Извлекаем оценку из текста
+        grade = None
+        if "ОЦЕНКА:" in evaluation:
+            import re
+            match = re.search(r'ОЦЕНКА:\s*(\d+)', evaluation)
+            if match:
+                grade = int(match.group(1))
+                # Ограничиваем диапазон
+                if grade < 1:
+                    grade = 1
+                elif grade > 5:
+                    grade = 5
+        
+        return {
+            'evaluation': evaluation,
+            'grade': grade,
+            'feedback': evaluation,
+            'error': None
+        }
+    
+    except Exception as e:
+        return {
+            'evaluation': f"Ошибка при оценке: {str(e)}",
+            'grade': None,
+            'feedback': f"Ошибка при оценке: {str(e)}",
+            'error': str(e)
+        }
+
