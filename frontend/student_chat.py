@@ -106,7 +106,7 @@ def show_student_chat():
     with st.sidebar:
         st.header("Чаты")
         
-        # CSS и JavaScript для показа кнопки удаления при наведении
+        # CSS и JavaScript для показа кнопки удаления при наведении и стилизации палитры оценок
         st.markdown("""
             <style>
             /* Делаем кнопку удаления полупрозрачной по умолчанию */
@@ -117,6 +117,12 @@ def show_student_chat():
             /* При наведении на строку с чатом показываем кнопку полностью */
             .chat-row:hover .delete-chat-btn {
                 opacity: 1 !important;
+            }
+            /* Стилизация кнопок оценок - делаем их более заметными */
+            button:has-text("★") {
+                font-size: 1.2rem !important;
+                padding: 0.5rem !important;
+                min-height: 2.5rem !important;
             }
             </style>
             <script>
@@ -289,17 +295,37 @@ def show_student_chat():
             
             # Показываем оценку, если есть
             if msg['rating']:
-                st.caption(f"Оценка: {msg['rating']}/5")
-                if msg['is_best_answer']:
-                    st.success("Лучший ответ")
+                with st.container():
+                    st.markdown("---")
+                    st.markdown(f"**Оценка:** {'★' * msg['rating']}{'☆' * (5 - msg['rating'])} ({msg['rating']}/5)")
+                    if msg['is_best_answer']:
+                        st.success("Лучший ответ")
             
             # Кнопка оценки (только если нет ошибки и еще не оценено)
             if not msg['rating'] and not has_error:
-                st.caption("Оцените ответ:")
+                st.markdown("---")
+                # Создаем палитру для оценки
+                rating_key = f"rating_palette_{msg['id']}"
+                st.markdown(f"""
+                    <div id="{rating_key}" style="
+                        border: 2px solid #e0e0e0;
+                        border-radius: 8px;
+                        padding: 1rem;
+                        background-color: #f9f9f9;
+                        margin: 1rem 0;
+                    ">
+                        <h4 style="margin-top: 0; margin-bottom: 0.5rem; color: #333; font-size: 1.1rem;">ОЦЕНИТЕ ОТВЕТ</h4>
+                    </div>
+                """, unsafe_allow_html=True)
                 cols = st.columns(5)
                 for i, col in enumerate(cols, 1):
                     with col:
-                        if st.button(f"{i}", key=f"rate_{msg['id']}_{i}"):
+                        if st.button(
+                            "★" * i + "☆" * (5 - i),
+                            key=f"rate_{msg['id']}_{i}",
+                            use_container_width=True,
+                            help=f"Оценить на {i} из 5"
+                        ):
                             rate_message(msg['id'], i)
                             st.rerun()
     
@@ -389,11 +415,29 @@ def show_student_chat():
                 
                 # Кнопки для оценки (только если нет ошибки)
                 if not has_error:
-                    st.caption("Оцените ответ:")
+                    st.markdown("---")
+                    # Создаем палитру для оценки
+                    rating_key = f"rating_palette_new_{message_id}"
+                    st.markdown(f"""
+                        <div id="{rating_key}" style="
+                            border: 2px solid #e0e0e0;
+                            border-radius: 8px;
+                            padding: 1rem;
+                            background-color: #f9f9f9;
+                            margin: 1rem 0;
+                        ">
+                            <h4 style="margin-top: 0; margin-bottom: 0.5rem; color: #333; font-size: 1.1rem;">ОЦЕНИТЕ ОТВЕТ</h4>
+                        </div>
+                    """, unsafe_allow_html=True)
                     cols = st.columns(5)
                     for i, col in enumerate(cols, 1):
                         with col:
-                            if st.button(f"{i}", key=f"rate_new_{i}"):
+                            if st.button(
+                                "★" * i + "☆" * (5 - i),
+                                key=f"rate_new_{i}",
+                                use_container_width=True,
+                                help=f"Оценить на {i} из 5"
+                            ):
                                 rate_message(message_id, i)
                                 st.rerun()
         
