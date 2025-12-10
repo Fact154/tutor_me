@@ -326,6 +326,43 @@ def get_or_create_chat(student_id: int, textbook_id: str, subject: str, grade: i
     conn.close()
     return chat_id
 
+def create_chat(student_id: int, textbook_id: str, subject: str, grade: int) -> int:
+    """Всегда создает новый чат (даже если уже есть чат с такими же параметрами)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Всегда создаем новый чат
+    cursor.execute("""
+        INSERT INTO chats (student_id, textbook_id, subject, grade)
+        VALUES (?, ?, ?, ?)
+    """, (student_id, textbook_id, subject, grade))
+    chat_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    
+    return chat_id
+
+def delete_chat(chat_id: int, student_id: int) -> bool:
+    """Удаляет чат (только если он принадлежит школьнику)"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Проверяем, что чат принадлежит школьнику
+    cursor.execute("SELECT id FROM chats WHERE id = ? AND student_id = ?", (chat_id, student_id))
+    if not cursor.fetchone():
+        conn.close()
+        return False
+    
+    # Удаляем все сообщения чата
+    cursor.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
+    
+    # Удаляем чат
+    cursor.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
+    
+    conn.commit()
+    conn.close()
+    return True
+
 def get_chat(chat_id: int) -> Optional[Dict[str, Any]]:
     """Получает информацию о чате"""
     conn = get_db_connection()

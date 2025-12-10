@@ -21,10 +21,13 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
 sys.excepthook = handle_exception
 
-# Конфигурационный файл с учебниками
+# Импортируем функции RAG из общего модуля
+from core import rag
+
+# Конфигурационный файл с учебниками (для совместимости)
 TEXTBOOKS_CONFIG = "textbooks_config.json"
 
-# Глобальные переменные
+# Глобальные переменные (для состояния Gradio интерфейса)
 chunks_data = []
 preprompt = ""
 chunks_error = ""
@@ -33,280 +36,72 @@ textbooks_config = {}
 doc_info = {}
 
 def load_textbooks_config() -> Dict[str, Any]:
-    """Загружает конфигурацию учебников"""
+    """Загружает конфигурацию учебников (обертка над core.rag)"""
     global textbooks_config
-    if os.path.exists(TEXTBOOKS_CONFIG):
-        try:
-            with open(TEXTBOOKS_CONFIG, 'r', encoding='utf-8') as f:
-                textbooks_config = json.load(f)
-                return textbooks_config
-        except Exception as e:
-            print(f"Ошибка загрузки конфигурации учебников: {e}")
-            return {}
-    else:
-        print(f"Файл конфигурации {TEXTBOOKS_CONFIG} не найден. Создайте его для работы с несколькими учебниками.")
-        return {}
+    textbooks_config = rag.load_textbooks_config()
+    return textbooks_config
 
 def get_textbook_list() -> List[Tuple[str, str]]:
     """Возвращает список учебников в формате (id, название) для dropdown"""
-    if not textbooks_config or 'textbooks' not in textbooks_config:
-        return []
-    
-    return [(tb['id'], tb['name']) for tb in textbooks_config['textbooks']]
+    return rag.get_textbook_list()
 
 def load_chunks(textbook_id: str = None) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any]]:
     """Загружает чанки для указанного учебника. Возвращает (чанки, сообщение_об_ошибке, информация_о_документе)"""
     global current_textbook_id
     
-    all_chunks = []
-    error_msg = ""
-    doc_info = {}
+    # Используем функцию из core.rag
+    result = rag.load_chunks(textbook_id)
+    all_chunks, error_msg, doc_info = result
     
-    # Если учебник не указан, используем первый из конфигурации
+    # Обновляем глобальную переменную для состояния интерфейса
+    if textbook_id:
+        current_textbook_id = textbook_id
+    elif all_chunks:
+        # Если учебник не указан, но чанки загружены, устанавливаем первый из конфигурации
+        config = rag.load_textbooks_config()
+        if config and 'textbooks' in config and config['textbooks']:
+            current_textbook_id = config['textbooks'][0]['id']
+    
+    return result
+
+def get_preprompt_modes(textbook_id: str = None) -> Dict[str, str]:
+    """Возвращает доступные режимы предпромптов для учебника"""
     if not textbook_id:
-        if textbooks_config and 'textbooks' in textbooks_config and textbooks_config['textbooks']:
-            textbook_id = textbooks_config['textbooks'][0]['id']
-        else:
-            # Fallback на старый способ загрузки
-            return load_chunks_legacy()
-    
-    current_textbook_id = textbook_id
-    
-    # Находим конфигурацию учебника
-    textbook = None
-    if textbooks_config and 'textbooks' in textbooks_config:
-        for tb in textbooks_config['textbooks']:
-            if tb['id'] == textbook_id:
-                textbook = tb
-                break
-    
-    if not textbook:
-        error_msg = f"Учебник с ID '{textbook_id}' не найден в конфигурации."
-        return [], error_msg, {}
-    
-    try:
-        # Загружаем чанки из всех указанных файлов
-        chunks_files = textbook.get('chunks_files', [])
-        if not chunks_files:
-            error_msg = f"Для учебника '{textbook['name']}' не указаны файлы с чанками."
-            return [], error_msg, {}
-        
-        for chunks_file in chunks_files:
-            if os.path.exists(chunks_file):
-                try:
-                    with open(chunks_file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        if 'chunks' in data:
-                            all_chunks.extend(data['chunks'])
-                        # Сохраняем информацию о документе из первого файла
-                        if 'document_info' in data and not doc_info:
-                            doc_info = data['document_info']
-                except Exception as e:
-                    error_msg += f"Ошибка загрузки {chunks_file}: {str(e)}. "
-            else:
-                error_msg += f"Файл {chunks_file} не найден. "
-        
-        # Если doc_info пустой, используем информацию из конфигурации
-        if not doc_info:
-            doc_info = {
-                'title': textbook.get('name', 'Неизвестно'),
-                'author': textbook.get('author', ''),
-                'publisher': textbook.get('publisher', ''),
-                'year': textbook.get('year', '')
-            }
-        
-        print(f"Загружено чанков для '{textbook['name']}': {len(all_chunks)}")
-        if error_msg:
-            print(f"Предупреждения: {error_msg}")
-    except Exception as e:
-        error_msg = f"Критическая ошибка при загрузке чанков: {str(e)}"
-        print(error_msg)
-    
-    return all_chunks, error_msg.strip(), doc_info
+        textbook_id = current_textbook_id
+        if not textbook_id:
+            config = rag.load_textbooks_config()
+            if config and 'textbooks' in config and config['textbooks']:
+                textbook_id = config['textbooks'][0]['id']
+    return rag.get_preprompt_modes(textbook_id)
 
-def load_chunks_legacy() -> Tuple[List[Dict[str, Any]], str, Dict[str, Any]]:
-    """Старый способ загрузки чанков (для обратной совместимости)"""
-    CHUNKS1_PATH = "promt/chancs1.txt"
-    CHUNKS2_PATH = "promt/chancs2.txt"
-    
-    all_chunks = []
-    error_msg = ""
-    doc_info = {}
-    
-    for chunks_file in [CHUNKS1_PATH, CHUNKS2_PATH]:
-        if os.path.exists(chunks_file):
-            try:
-                with open(chunks_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    if 'chunks' in data:
-                        all_chunks.extend(data['chunks'])
-                    if 'document_info' in data and not doc_info:
-                        doc_info = data['document_info']
-            except Exception as e:
-                error_msg += f"Ошибка загрузки {chunks_file}: {str(e)}. "
-    
-    return all_chunks, error_msg.strip(), doc_info
 
-def load_preprompt(textbook_id: str = None) -> str:
-    """Загружает предпромт для указанного учебника"""
+def get_default_mode(textbook_id: str = None) -> str:
+    """Возвращает режим по умолчанию для учебника"""
+    if not textbook_id:
+        textbook_id = current_textbook_id
+        if not textbook_id:
+            config = rag.load_textbooks_config()
+            if config and 'textbooks' in config and config['textbooks']:
+                textbook_id = config['textbooks'][0]['id']
+    return rag.get_default_mode(textbook_id)
+
+
+def load_preprompt(textbook_id: str = None, mode: str = None) -> str:
+    """Загружает предпромт для указанного учебника и режима"""
     # Если учебник не указан, используем текущий или первый из конфигурации
     if not textbook_id:
         textbook_id = current_textbook_id
-        if not textbook_id and textbooks_config and 'textbooks' in textbooks_config and textbooks_config['textbooks']:
-            textbook_id = textbooks_config['textbooks'][0]['id']
+        if not textbook_id:
+            config = rag.load_textbooks_config()
+            if config and 'textbooks' in config and config['textbooks']:
+                textbook_id = config['textbooks'][0]['id']
     
-    # Находим конфигурацию учебника
-    if textbook_id and textbooks_config and 'textbooks' in textbooks_config:
-        for tb in textbooks_config['textbooks']:
-            if tb['id'] == textbook_id:
-                preprompt_file = tb.get('preprompt_file', 'promt/предпромт.txt')
-                if os.path.exists(preprompt_file):
-                    try:
-                        with open(preprompt_file, 'r', encoding='utf-8') as f:
-                            return f.read()
-                    except Exception as e:
-                        print(f"Ошибка загрузки предпромта: {e}")
-                break
-    
-    # Fallback на старый путь
-    PREPROMPT_PATH = "promt/предпромт.txt"
-    if os.path.exists(PREPROMPT_PATH):
-        with open(PREPROMPT_PATH, 'r', encoding='utf-8') as f:
-            return f.read()
-    return ""
+    # Используем функцию из core.rag
+    return rag.load_preprompt(textbook_id, mode)
 
-def find_relevant_chunks(query: str, chunks: List[Dict], top_k: int = 3) -> List[Dict]:
-    """Находит наиболее релевантные чанки для запроса с улучшенным поиском"""
-    import re
-    
-    # Нормализуем запрос: приводим к нижнему регистру и удаляем знаки препинания
-    query_normalized = re.sub(r'[^\w\s]', ' ', query.lower())
-    query_words = set([w for w in query_normalized.split() if len(w) > 2])  # Игнорируем короткие слова
-    
-    # Если запрос слишком короткий, используем все слова
-    if not query_words:
-        query_words = set(query_normalized.split())
-    
-    scored_chunks = []
-    
-    for chunk in chunks:
-        score = 0
-        
-        # Создаём объединённый текст из всех полей чанка для более полного поиска
-        chunk_text_parts = []
-        
-        # Добавляем раздел
-        if 'section' in chunk:
-            chunk_text_parts.append(chunk['section'].lower())
-        
-        # Добавляем тему (высокий приоритет)
-        if 'topic' in chunk:
-            topic_text = chunk['topic'].lower()
-            chunk_text_parts.append(topic_text)
-            # Проверяем совпадения в теме отдельно (более высокий вес)
-            for word in query_words:
-                if word in topic_text:
-                    score += 4  # Увеличиваем вес темы
-                # Проверяем частичные совпадения
-                if any(word in part or part in word for part in topic_text.split()):
-                    score += 2
-        
-        # Добавляем ключевые слова
-        if 'keywords' in chunk:
-            keywords_text = ' '.join([kw.lower() for kw in chunk['keywords']])
-            chunk_text_parts.append(keywords_text)
-            for word in query_words:
-                if any(word in kw.lower() or kw.lower() in word for kw in chunk['keywords']):
-                    score += 3  # Увеличиваем вес ключевых слов
-        
-        # Добавляем содержание
-        if 'content' in chunk:
-            content_lower = chunk['content'].lower()
-            chunk_text_parts.append(content_lower)
-            # Подсчитываем количество совпадений в содержании
-            matches = sum(1 for word in query_words if word in content_lower)
-            score += matches  # Бонус за каждое совпадение
-        
-        # Проверяем номер задания (самый высокий приоритет)
-        if 'exercises' in chunk:
-            numbers = re.findall(r'\d+', query)
-            for num in numbers:
-                if int(num) in chunk['exercises']:
-                    score += 10  # Очень высокий приоритет для номеров заданий
-        
-        # Проверяем страницы
-        if 'pages' in chunk:
-            page_numbers = re.findall(r'\d+', chunk['pages'])
-            query_numbers = re.findall(r'\d+', query)
-            for q_num in query_numbers:
-                if any(q_num == p_num for p_num in page_numbers):
-                    score += 6
-        
-        # Дополнительная проверка: ищем совпадения в объединённом тексте
-        # Это помогает находить чанки даже если слова разбросаны по разным полям
-        if chunk_text_parts:
-            combined_text = ' '.join(chunk_text_parts)
-            # Проверяем, сколько слов из запроса встречается в чанке
-            found_words = sum(1 for word in query_words if word in combined_text)
-            if found_words > 0:
-                # Бонус за процент совпадения слов
-                match_ratio = found_words / len(query_words) if query_words else 0
-                score += int(match_ratio * 5)  # Бонус до 5 баллов за полное совпадение
-        
-        # Добавляем чанк, если есть хотя бы минимальный релевантность
-        if score > 0:
-            scored_chunks.append((score, chunk))
-    
-    # Сортируем по релевантности
-    scored_chunks.sort(key=lambda x: x[0], reverse=True)
-    
-    # Если нашли чанки, возвращаем top_k
-    if scored_chunks:
-        return [chunk for _, chunk in scored_chunks[:top_k]]
-    
-    # Если ничего не нашли, пробуем более мягкий поиск (частичные совпадения)
-    # Это помогает, когда запрос использует другие формулировки
-    if not scored_chunks:
-        for chunk in chunks:
-            score = 0
-            combined_text = ''
-            
-            # Собираем весь текст чанка
-            if 'section' in chunk:
-                combined_text += chunk['section'].lower() + ' '
-            if 'topic' in chunk:
-                combined_text += chunk['topic'].lower() + ' '
-            if 'keywords' in chunk:
-                combined_text += ' '.join([kw.lower() for kw in chunk['keywords']]) + ' '
-            if 'content' in chunk:
-                combined_text += chunk['content'].lower()[:500]  # Первые 500 символов
-            
-            # Проверяем частичные совпадения
-            query_clean = query_normalized.replace(' ', '')
-            for word in query_words:
-                if len(word) > 3 and word in combined_text:
-                    score += 1
-            
-            if score > 0:
-                scored_chunks.append((score, chunk))
-        
-        scored_chunks.sort(key=lambda x: x[0], reverse=True)
-        return [chunk for _, chunk in scored_chunks[:top_k]]
-    
-    return []
-
-def format_chunks_for_prompt(chunks: List[Dict]) -> str:
-    """Форматирует чанки для включения в промпт"""
-    formatted = []
-    for chunk in chunks:
-        chunk_text = f"=== Чанк {chunk.get('chunk_id', '?')} ===\n"
-        chunk_text += f"Раздел: {chunk.get('section', 'Не указан')}\n"
-        chunk_text += f"Тема: {chunk.get('topic', 'Не указана')}\n"
-        chunk_text += f"Страницы: {chunk.get('pages', 'Не указаны')}\n"
-        if 'content' in chunk:
-            chunk_text += f"Содержание:\n{chunk['content']}\n"
-        formatted.append(chunk_text)
-    return "\n\n".join(formatted)
+# Используем функции из core.rag
+find_relevant_chunks = rag.find_relevant_chunks
+format_chunks_for_prompt = rag.format_chunks_for_prompt
 
 def check_ollama_connection() -> Tuple[bool, str]:
     """Проверяет подключение к Ollama"""
@@ -347,7 +142,7 @@ def get_available_models() -> List[str]:
         print(f"❌ Ошибка при получении списка моделей: {e}")
         return ["qwen3:8b"]  # Возвращаем дефолтную модель при ошибке
 
-def query_llm(user_query: str, model_name: str = "qwen2.5:3b") -> str:
+def query_llm(user_query: str, model_name: str = "qwen3:8b") -> str:
     """Отправляет запрос в LLM через Ollama"""
     global chunks_data, preprompt
     
@@ -380,7 +175,7 @@ def query_llm(user_query: str, model_name: str = "qwen2.5:3b") -> str:
 """
     
     try:
-        # Отправляем запрос в Ollama
+        # Отправляем запрос в Ollama с оптимизированными параметрами
         response = ollama.chat(
             model=model_name,
             messages=[
@@ -392,7 +187,13 @@ def query_llm(user_query: str, model_name: str = "qwen2.5:3b") -> str:
                     "role": "user",
                     "content": full_prompt
                 }
-            ]
+            ],
+            options={
+                'temperature': 0.3,  # Низкая температура для точности и следования инструкциям
+                'top_p': 0.9,        # Ограничиваем вариативность
+                'top_k': 40,         # Уменьшаем случайность
+                'repeat_penalty': 1.1  # Избегаем повторений
+            }
         )
         
         return response['message']['content']
@@ -403,8 +204,10 @@ def query_llm(user_query: str, model_name: str = "qwen2.5:3b") -> str:
             return f"❌ Модель '{model_name}' не найдена.\n\nУстановите модель командой:\n```bash\nollama pull {model_name}\n```\n\nИли выберите другую модель из списка."
         return f"❌ Ошибка при обращении к LLM: {error_msg}\n\nУбедитесь, что:\n1. Ollama запущен (`ollama serve`)\n2. Модель {model_name} установлена (`ollama pull {model_name}`)"
 
-def chat_interface(message: str, history: List, model_name: str) -> tuple:
+def chat_interface(message: str, history: List, model_name: str, preprompt_mode: str = None) -> tuple:
     """Интерфейс для чата"""
+    global preprompt
+    
     # Инициализируем history, если она None или не является списком
     if history is None:
         history = []
@@ -416,6 +219,10 @@ def chat_interface(message: str, history: List, model_name: str) -> tuple:
         return history, ""
     
     try:
+        # Загружаем предпромпт для выбранного режима
+        if preprompt_mode:
+            preprompt = load_preprompt(current_textbook_id, preprompt_mode)
+        
         # Получаем ответ от LLM
         response = query_llm(message, model_name)
         
@@ -476,7 +283,10 @@ def main():
                 # Получаем список доступных моделей из Ollama
                 try:
                     available_models = get_available_models()
-                    default_model = available_models[0] if available_models else "qwen3:8b"
+                    # Дефолтная модель - 8b, если доступна, иначе первая из списка
+                    default_model = "qwen3:8b"
+                    if "qwen3:8b" not in available_models and available_models:
+                        default_model = available_models[0]
                 except Exception as e:
                     print(f"Ошибка при загрузке моделей: {e}")
                     available_models = ["qwen3:8b"]
@@ -494,13 +304,38 @@ def main():
                 def refresh_models():
                     try:
                         new_models = get_available_models()
-                        default = new_models[0] if new_models else "qwen3:8b"
+                        # Дефолтная модель - 8b, если доступна, иначе первая из списка
+                        default = "qwen3:8b"
+                        if "qwen3:8b" not in new_models:
+                            if new_models:
+                                default = new_models[0]
+                            else:
+                                default = "qwen3:8b"
                         return gr.Dropdown(choices=new_models, value=default)
                     except Exception as e:
                         print(f"Ошибка при обновлении моделей: {e}")
                         return gr.Dropdown(choices=["qwen3:8b"], value="qwen3:8b")
                 
                 refresh_models_btn.click(refresh_models, None, model_dropdown)
+                
+                # Выбор режима репетитора
+                preprompt_modes = get_preprompt_modes(default_textbook_value)
+                mode_choices = list(preprompt_modes.keys())
+                default_mode = get_default_mode(default_textbook_value)
+                
+                mode_dropdown = gr.Dropdown(
+                    choices=mode_choices,
+                    value=default_mode,
+                    label="🎭 Режим репетитора",
+                    info="Выберите стиль ответов"
+                )
+                
+                gr.Markdown("""
+                **Режимы:**
+                - **Стандартный** — сбалансированные ответы
+                - **Краткий** — быстрые ответы без деталей
+                - **Подробный** — детальные объяснения + задание для закрепления
+                """)
                 
                 gr.Markdown("### 📊 Статистика")
                 
@@ -659,6 +494,22 @@ def main():
             """Очищает чат"""
             return [], ""
         
+        # Функция для обновления режимов при смене учебника
+        def update_modes_on_textbook_change(textbook_name):
+            """Обновляет список режимов при смене учебника"""
+            # Находим ID учебника
+            textbook_id = None
+            for id_val, name in textbook_list:
+                if name == textbook_name:
+                    textbook_id = id_val
+                    break
+            
+            if textbook_id:
+                modes = get_preprompt_modes(textbook_id)
+                default = get_default_mode(textbook_id)
+                return gr.Dropdown(choices=list(modes.keys()), value=default)
+            return gr.Dropdown(choices=["Стандартный"], value="Стандартный")
+        
         # Привязываем смену учебника к обновлению данных (после определения всех компонентов)
         textbook_dropdown.change(
             change_textbook,
@@ -666,8 +517,15 @@ def main():
             outputs=[stats_text, chatbot]
         )
         
-        msg.submit(chat_interface, [msg, chatbot, model_dropdown], [chatbot, msg])
-        submit_btn.click(chat_interface, [msg, chatbot, model_dropdown], [chatbot, msg])
+        # Обновляем режимы при смене учебника
+        textbook_dropdown.change(
+            update_modes_on_textbook_change,
+            inputs=[textbook_dropdown],
+            outputs=[mode_dropdown]
+        )
+        
+        msg.submit(chat_interface, [msg, chatbot, model_dropdown, mode_dropdown], [chatbot, msg])
+        submit_btn.click(chat_interface, [msg, chatbot, model_dropdown, mode_dropdown], [chatbot, msg])
         clear_btn.click(clear_chat, None, [chatbot, msg])
         
         gr.Markdown("""

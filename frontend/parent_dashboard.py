@@ -33,17 +33,20 @@ def show_parent_dashboard():
     
     # Информация о родителе
     with st.expander("Личный кабинет", expanded=False):
-        st.write(f"**Имя пользователя:** {parent['username']}")
+        col1, col2 = st.columns([2, 3])
+        with col1:
+            st.write(f"**Имя пользователя:** {parent['username']}")
         
-        # Telegram
-        telegram = st.text_input(
-            "Telegram",
-            value=parent.get('telegram', '') or '',
-            key="parent_telegram",
-            placeholder="@username"
-        )
+        with col2:
+            # Telegram
+            telegram = st.text_input(
+                "Telegram",
+                value=parent.get('telegram', '') or '',
+                key="parent_telegram",
+                placeholder="@username"
+            )
         
-        if st.button("Сохранить Telegram"):
+        if st.button("Сохранить Telegram", type="primary"):
             if telegram:
                 update_parent_telegram(parent_id, telegram)
                 st.success("Telegram сохранен")
@@ -51,7 +54,7 @@ def show_parent_dashboard():
             else:
                 st.warning("Введите Telegram")
     
-    st.markdown("---")
+    st.divider()
     
     # Добавление нового школьника
     st.subheader("Добавить школьника")
@@ -61,14 +64,52 @@ def show_parent_dashboard():
         col1, col2 = st.columns(2)
         
         with col1:
-            full_name = st.text_input("ФИО школьника", key="new_student_name", placeholder="Иванов Иван Иванович")
-            username = st.text_input("Логин (необязательно)", key="new_student_username", placeholder="Оставьте пустым для автогенерации", help="Будет сгенерирован автоматически, если не указан")
+            full_name = st.text_input(
+                "ФИО школьника *", 
+                key="new_student_name", 
+                placeholder="Иванов Иван Иванович",
+                help="Обязательное поле"
+            )
+            username = st.text_input(
+                "Логин (необязательно)", 
+                key="new_student_username", 
+                placeholder="Оставьте пустым для автогенерации", 
+                help="Будет сгенерирован автоматически, если не указан"
+            )
         
         with col2:
-            grade = st.number_input("Класс", min_value=1, max_value=11, value=5, key="new_student_grade")
-            telegram = st.text_input("Telegram (необязательно)", key="new_student_telegram", placeholder="@username")
+            # Выпадающий список для выбора класса с возможностью ручного ввода
+            grade_options = [str(i) for i in range(1, 12)]  # От 1 до 11 класса
+            grade_options.append("Ввести вручную")  # Добавляем опцию ручного ввода
+            
+            grade_choice = st.selectbox(
+                "Класс *",
+                options=grade_options,
+                index=4,  # По умолчанию 5 класс (индекс 4)
+                key="new_student_grade_select",
+                help="Выберите класс из списка или введите вручную"
+            )
+            
+            # Если выбрано "Ввести вручную", показываем поле для ввода
+            if grade_choice == "Ввести вручную":
+                grade = st.number_input(
+                    "Введите класс",
+                    min_value=1,
+                    max_value=11,
+                    value=5,
+                    step=1,
+                    key="new_student_grade_custom"
+                )
+            else:
+                grade = int(grade_choice)
+            
+            telegram = st.text_input(
+                "Telegram (необязательно)", 
+                key="new_student_telegram", 
+                placeholder="@username"
+            )
         
-        submitted = st.form_submit_button("Добавить школьника", use_container_width=True)
+        submitted = st.form_submit_button("Добавить школьника", type="primary", use_container_width=True)
         
         if submitted:
             if not full_name:
@@ -83,20 +124,24 @@ def show_parent_dashboard():
                         telegram=telegram if telegram else None
                     )
                     
-                    st.success("Школьник успешно добавлен")
-                    st.info(f"""
-                    **Логин:** `{result['login']}`  
-                    **Пароль:** `{result['password']}`  
-                    
-                    Сохраните эти данные. Они понадобятся для входа школьника в систему.
-                    """)
+                    st.success("Школьник успешно добавлен!")
+                    with st.container():
+                        st.markdown("### Данные для входа:")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown(f"**Логин:**")
+                            st.code(result['login'], language=None)
+                        with col2:
+                            st.markdown(f"**Пароль:**")
+                            st.code(result['password'], language=None)
+                        st.warning("Сохраните эти данные! Они понадобятся для входа школьника в систему.")
                     # Не делаем rerun, чтобы показать credentials
                 except ValueError as e:
                     st.error(str(e))
                 except Exception as e:
                     st.error(f"Ошибка при добавлении: {str(e)}")
     
-    st.markdown("---")
+    st.divider()
     
     # Список школьников
     st.subheader("Мои школьники")
@@ -109,34 +154,35 @@ def show_parent_dashboard():
         # Карточки школьников
         for idx, student in enumerate(students):
             with st.container():
-                col1, col2, col3, col4 = st.columns([2.5, 1.5, 1.5, 1])
-                
-                with col1:
-                    st.markdown(f"**{student.get('full_name', 'Не указано')}**")
-                    st.caption(f"Класс {student['grade']}")
-                
-                with col2:
-                    st.text("Логин")
-                    st.code(student['login'], language=None)
-                
-                with col3:
-                    st.text("Пароль")
-                    st.code(student['password'], language=None)
-                
-                with col4:
-                    st.text("")  # Отступ для выравнивания с текстом
-                    st.text("")  # Дополнительный отступ
-                    if st.button("Удалить", key=f"delete_{student['id']}", type="secondary", use_container_width=True):
-                        if delete_student(student['id'], parent_id):
-                            st.success("Школьник удален")
-                            st.rerun()
-                        else:
-                            st.error("Ошибка при удалении")
+                # Используем карточку с рамкой
+                with st.container():
+                    col1, col2, col3, col4 = st.columns([3, 2, 2, 1.5])
+                    
+                    with col1:
+                        st.markdown(f"### {student.get('full_name', 'Не указано')}")
+                        st.markdown(f"Класс **{student['grade']}**")
+                    
+                    with col2:
+                        st.markdown("**Логин:**")
+                        st.code(student['login'], language=None)
+                    
+                    with col3:
+                        st.markdown("**Пароль:**")
+                        st.code(student['password'], language=None)
+                    
+                    with col4:
+                        st.markdown("<br>", unsafe_allow_html=True)  # Отступ сверху
+                        if st.button("Удалить", key=f"delete_{student['id']}", type="secondary", use_container_width=True):
+                            if delete_student(student['id'], parent_id):
+                                st.success("Школьник удален")
+                                st.rerun()
+                            else:
+                                st.error("Ошибка при удалении")
                 
                 if idx < len(students) - 1:
                     st.divider()
     
-    st.markdown("---")
+    st.divider()
     
     # Метрики успеваемости
     if students:

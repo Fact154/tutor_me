@@ -3,6 +3,7 @@
 """
 import streamlit as st
 import sys
+import time
 from pathlib import Path
 
 # Добавляем родительскую директорию в путь для импорта
@@ -15,18 +16,26 @@ from parent_dashboard import show_parent_dashboard
 # Настройка страницы
 st.set_page_config(
     page_title="Репетитор для школьников",
-    layout="wide",
-    initial_sidebar_state="collapsed"
+    layout="wide",  # Широкий layout для дашборда и чата
+    initial_sidebar_state="expanded"
 )
+
+# CSS для всех страниц
+st.markdown("""
+    <style>
+    .main .block-container {
+        max-width: 75%;
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 def show_login():
     """Отображает страницу входа"""
     
     # Центрированный заголовок
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.title("Репетитор для школьников")
-        st.markdown("---")
+    st.title("Репетитор для школьников")
     
     # Выбор типа пользователя
     user_type = st.radio(
@@ -35,8 +44,6 @@ def show_login():
         horizontal=True,
         key="login_user_type"
     )
-    
-    st.markdown("---")
     
     if user_type == "Родитель":
         # Вкладки для логина и регистрации
@@ -79,8 +86,23 @@ def show_login():
                     else:
                         try:
                             parent_id = create_parent(new_username, new_password, telegram if telegram else None)
-                            st.success("Регистрация успешна! Теперь вы можете войти.")
-                            st.info("Перейдите на вкладку 'Вход' для входа в систему")
+                            
+                            # Сохраняем данные для автоматического входа
+                            st.session_state['pending_parent_id'] = parent_id
+                            st.session_state['registration_time'] = time.time()
+                            
+                            st.success("Регистрация успешна! Выполняется вход...")
+                            st.info("Пожалуйста, подождите 3 секунды...")
+                            
+                            # Используем JavaScript для автоматической перезагрузки через 3 секунды
+                            st.markdown("""
+                                <script>
+                                    setTimeout(function() {
+                                        window.location.reload();
+                                    }, 3000);
+                                </script>
+                            """, unsafe_allow_html=True)
+                            
                         except ValueError as e:
                             st.error(str(e))
     
@@ -133,6 +155,16 @@ def main():
         if not student:
             st.session_state['student_id'] = None
             st.session_state['user_type'] = None
+    
+    # Обработка автоматического входа после регистрации
+    if 'pending_parent_id' in st.session_state and 'registration_time' in st.session_state:
+        # Выполняем автоматический вход
+        st.session_state['parent_id'] = st.session_state['pending_parent_id']
+        st.session_state['user_type'] = 'parent'
+        # Очищаем временные переменные
+        del st.session_state['pending_parent_id']
+        del st.session_state['registration_time']
+        st.rerun()
     
     # Навигация
     if st.session_state['user_type'] == 'parent':

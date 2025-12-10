@@ -10,7 +10,12 @@
         "promt/chancs1.txt",
         "promt/chancs2.txt"
       ],
-      "preprompt_file": "promt/предпромт.txt"
+      "preprompt_modes": {
+        "Стандартный": "promt/предпромт.txt",
+        "Краткий": "promt/предпромт_краткий.txt",
+        "Подробный": "promt/предпромт_подробный.txt"
+      },
+      "default_mode": "Стандартный"
     }
   ]
 }
