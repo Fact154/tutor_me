@@ -130,12 +130,7 @@ def main():
         show_parent_dashboard()
     
     elif st.session_state['user_type'] == 'student':
-        # Кнопка выхода
-        if st.sidebar.button("Выйти"):
-            st.session_state['student_id'] = None
-            st.session_state['user_type'] = None
-            st.rerun()
-        
+        # Кнопка выхода теперь в самом чате
         show_student_chat()
     
     else:
