@@ -333,6 +333,7 @@ def show_student_chat():
     chat_id = st.session_state.get('selected_chat_id')
     
     if not chat_id:
+        st.title("Чат с репетитором")
         st.info("Создайте новый чат в боковой панели, чтобы начать общение")
         return
     
@@ -369,7 +370,7 @@ def show_student_chat():
         examples = get_examples_for_textbook(current_textbook_id)
         if examples:
             # Компактное отображение примеров
-            with st.expander("💡 Примеры вопросов (нажмите, чтобы развернуть)", expanded=False):
+            with st.expander("Примеры вопросов (нажмите, чтобы развернуть)", expanded=False):
                 # Отображаем примеры в виде компактных кнопок (3 колонки)
                 cols = st.columns(3)
                 for idx, example in enumerate(examples):
