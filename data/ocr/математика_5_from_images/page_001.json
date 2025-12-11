@@ -1,0 +1,10 @@
+{
+  "page": 1,
+  "text": "т @е в1[га\n+ ос м 1оТь",
+  "confidence": 19.982142857142858,
+  "image_file": "page_0001.png",
+  "config": {
+    "preprocessing": "advanced",
+    "psm": 3
+  }
+}

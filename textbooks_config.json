@@ -7,13 +7,41 @@
       "publisher": "Просвещение",
       "year": 2023,
       "chunks_files": [
-        "promt/chancs1.txt",
-        "promt/chancs2.txt"
+        "promt/tkacheva_math_5_part1/chancs1.txt",
+        "promt/tkacheva_math_5_part1/chancs2.txt",
+        "promt/tkacheva_math_5_part1/chancs3.txt",
+        "promt/tkacheva_math_5_part1/chancs4.txt",
+        "promt/tkacheva_math_5_part1/chancs5.txt"
       ],
       "preprompt_modes": {
-        "Стандартный": "promt/предпромт.txt",
-        "Краткий": "promt/предпромт_краткий.txt",
-        "Подробный": "promt/предпромт_подробный.txt"
+        "Стандартный": "promt/предпромт_math_улучшенный.txt",
+        "Краткий": "promt/предпромт_math_краткий.txt",
+        "Подробный": "promt/предпромт_math_подробный.txt"
+      },
+      "default_mode": "Стандартный"
+    },
+    {
+      "id": "istoriya-drevnego-mira-5kl",
+      "name": "Всеобщая история. История Древнего мира. 5 класс",
+      "author": "А. А. Вигасин, Г. И. Годер, И. С. Свенцицкая",
+      "publisher": "Просвещение",
+      "year": 2020,
+      "chunks_files": [
+        "promt/istoriya-drevnego-mira-5kl/chancs1.txt",
+        "promt/istoriya-drevnego-mira-5kl/chancs2.txt",
+        "promt/istoriya-drevnego-mira-5kl/chancs3.txt",
+        "promt/istoriya-drevnego-mira-5kl/chancs4.txt",
+        "promt/istoriya-drevnego-mira-5kl/chancs5.txt",
+        "promt/istoriya-drevnego-mira-5kl/chancs6.txt",
+        "promt/istoriya-drevnego-mira-5kl/chancs7.txt",
+        "promt/istoriya-drevnego-mira-5kl/chancs8.txt",
+        "promt/istoriya-drevnego-mira-5kl/chancs9.txt",
+        "promt/istoriya-drevnego-mira-5kl/chancs10.txt"
+      ],
+      "preprompt_modes": {
+        "Стандартный": "promt/предпромт_history.txt",
+        "Краткий": "promt/предпромт_history_краткий.txt",
+        "Подробный": "promt/предпромт_history_подробный.txt"
       },
       "default_mode": "Стандартный"
     }

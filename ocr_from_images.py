@@ -43,6 +43,29 @@ def process_images_ocr(
     output_dir = Config.OCR_DIR / f"{metadata.subject}_{metadata.grade}_from_images"
     output_dir.mkdir(exist_ok=True, parents=True)
     
+    # Устанавливаем переменную окружения TESSDATA_PREFIX
+    import os
+    possible_tessdata = []
+    
+    if tesseract_cmd:
+        possible_tessdata.append(Path(tesseract_cmd).parent / 'tessdata')
+    
+    # Всегда проверяем стандартные места
+    possible_tessdata.extend([
+        Path('C:/Program Files/Tesseract-OCR/tessdata'),
+        Path('C:/Program Files (x86)/Tesseract-OCR/tessdata'),
+        Path('D:/Tesseract-OCR/tessdata'),
+    ])
+    
+    # Ищем папку с rus.traineddata
+    for td in possible_tessdata:
+        if td.exists() and (td / 'rus.traineddata').exists():
+            os.environ['TESSDATA_PREFIX'] = str(td)
+            print(f"✓ Найден tessdata с rus.traineddata: {td}")
+            break
+    else:
+        print("⚠ Внимание: TESSDATA_PREFIX не установлен, Tesseract будет искать в стандартных местах")
+    
     # Инициализация OCR
     try:
         ocr_handler = TesseractHandler(lang='rus', tesseract_cmd=tesseract_cmd)
@@ -52,6 +75,7 @@ def process_images_ocr(
         print("1. Windows: https://github.com/UB-Mannheim/tesseract/wiki")
         print("2. Linux: sudo apt install tesseract-ocr tesseract-ocr-rus")
         print("3. Mac: brew install tesseract tesseract-lang")
+        print("\n⚠ Убедитесь, что установлен русский язык (rus.traineddata)")
         return None
     
     # Находим все изображения
@@ -192,7 +216,36 @@ if __name__ == "__main__":
     )
     
     # Путь к tesseract (если не в PATH)
-    tesseract_cmd = r"D:\Tesseract-OCR\tesseract.exe"
+    # Попробуем найти Tesseract автоматически
+    import shutil
+    tesseract_cmd = None
+    
+    # Проверяем стандартные пути
+    possible_paths = [
+        r"D:\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    ]
+    
+    # Проверяем PATH
+    tesseract_in_path = shutil.which("tesseract")
+    if tesseract_in_path:
+        tesseract_cmd = tesseract_in_path
+    else:
+        # Проверяем возможные пути
+        for path in possible_paths:
+            if Path(path).exists():
+                tesseract_cmd = path
+                break
+    
+    if not tesseract_cmd:
+        print("\n⚠ Tesseract не найден!")
+        print("\n📥 Установка Tesseract на диск D:")
+        print("1. Скачайте установщик: https://github.com/UB-Mannheim/tesseract/wiki")
+        print("2. При установке выберите диск D: (например, D:\\Tesseract-OCR)")
+        print("3. Убедитесь, что установлен русский язык (rus)")
+        print("\nИли укажите путь к tesseract.exe вручную в скрипте")
+        sys.exit(1)
     
     # Выбор режима обработки
     print("Выберите режим обработки:")

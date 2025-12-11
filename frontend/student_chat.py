@@ -3,6 +3,7 @@
 """
 import streamlit as st
 import sys
+import json
 from pathlib import Path
 
 # Добавляем родительскую директорию в путь для импорта
@@ -16,6 +17,25 @@ from database import (
 from rag_service import get_textbooks_list, answer_question_simple, evaluate_practice_answer, generate_practice_task
 from core import rag
 import ollama
+
+EXAMPLES_CONFIG_PATH = Path(__file__).parent.parent / "examples_config.json"
+
+def load_examples_config():
+    """Загружает примеры запросов из конфигурационного файла"""
+    try:
+        if EXAMPLES_CONFIG_PATH.exists():
+            with open(EXAMPLES_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        print(f"Ошибка загрузки примеров: {e}")
+        return {}
+
+def get_examples_for_textbook(textbook_id: str) -> list:
+    """Получает примеры запросов для учебника"""
+    config = load_examples_config()
+    textbooks_examples = config.get('textbooks', {})
+    return textbooks_examples.get(textbook_id, {}).get('examples', [])
 
 def check_ollama_connection():
     """Проверяет подключение к Ollama"""
@@ -192,6 +212,14 @@ def show_student_chat():
                         type=button_type
                     ):
                         st.session_state['selected_chat_id'] = chat['id']
+                        # Синхронизируем селектор учебника с выбранным чатом
+                        # Находим название учебника по ID
+                        chat_textbook_id = chat['textbook_id']
+                        for tb in textbooks:
+                            if tb['id'] == chat_textbook_id:
+                                st.session_state['new_textbook_select'] = tb['name']
+                                st.session_state['last_created_textbook_id'] = chat_textbook_id
+                                break
                         st.rerun()
                 
                 with col_delete:
@@ -221,13 +249,66 @@ def show_student_chat():
         st.subheader("Создать чат", divider=False)
         
         textbook_options_list = {tb['name']: tb['id'] for tb in textbooks}
+        
+        # Синхронизируем селектор с активным чатом (если чат выбран)
+        if st.session_state.get('selected_chat_id'):
+            active_chat = get_chat(st.session_state['selected_chat_id'])
+            if active_chat:
+                active_textbook_id = active_chat['textbook_id']
+                # Находим название учебника по ID
+                for tb in textbooks:
+                    if tb['id'] == active_textbook_id:
+                        # Устанавливаем значение селектора только если оно еще не установлено
+                        # или отличается от текущего чата
+                        if 'new_textbook_select' not in st.session_state or \
+                           st.session_state.get('last_synced_chat_id') != active_chat['id']:
+                            st.session_state['new_textbook_select'] = tb['name']
+                            st.session_state['last_created_textbook_id'] = active_textbook_id
+                            st.session_state['last_synced_chat_id'] = active_chat['id']
+                        break
+        
+        # Функция для создания чата при изменении учебника
+        def on_textbook_change():
+            """Вызывается при изменении выбора учебника"""
+            selected_textbook_name = st.session_state['new_textbook_select']
+            selected_textbook_id = textbook_options_list[selected_textbook_name]
+            
+            # Проверяем, действительно ли изменился учебник
+            if st.session_state.get('last_created_textbook_id') != selected_textbook_id:
+                # Определяем предмет из названия учебника
+                selected_textbook = next((tb for tb in textbooks if tb['id'] == selected_textbook_id), None)
+                if selected_textbook:
+                    subject = get_subject_from_textbook(selected_textbook['name'])
+                else:
+                    subject = "математика"  # По умолчанию
+                
+                # Создаем новый чат
+                new_chat_id = create_chat(
+                    student_id=student_id,
+                    textbook_id=selected_textbook_id,
+                    subject=subject,
+                    grade=student['grade']
+                )
+                st.session_state['selected_chat_id'] = new_chat_id
+                st.session_state['last_created_textbook_id'] = selected_textbook_id
+                st.session_state['show_chat_created_message'] = True
+        
         selected_textbook_name = st.selectbox(
             "Учебник",
             options=list(textbook_options_list.keys()),
             key="new_textbook_select",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            on_change=on_textbook_change
         )
         selected_textbook_id = textbook_options_list[selected_textbook_name]
+        
+        # Показываем сообщение о создании чата, если флаг установлен
+        if st.session_state.get('show_chat_created_message', False):
+            selected_textbook = next((tb for tb in textbooks if tb['id'] == selected_textbook_id), None)
+            if selected_textbook:
+                subject = get_subject_from_textbook(selected_textbook['name'])
+                st.success(f"Создан новый чат: {subject.capitalize()}")
+            st.session_state['show_chat_created_message'] = False
         
         if st.button("Создать новый чат", key="create_chat_btn", use_container_width=True):
             # Определяем предмет из названия учебника
@@ -282,6 +363,29 @@ def show_student_chat():
     
     # Загружаем историю сообщений
     messages = get_chat_messages(chat_id)
+    
+    # Если чат пустой, показываем примеры запросов
+    if not messages:
+        examples = get_examples_for_textbook(current_textbook_id)
+        if examples:
+            # Компактное отображение примеров
+            with st.expander("💡 Примеры вопросов (нажмите, чтобы развернуть)", expanded=False):
+                # Отображаем примеры в виде компактных кнопок (3 колонки)
+                cols = st.columns(3)
+                for idx, example in enumerate(examples):
+                    col = cols[idx % 3]
+                    with col:
+                        # Сокращаем текст для кнопки
+                        short_text = example[:35] + "..." if len(example) > 35 else example
+                        if st.button(
+                            short_text,
+                            key=f"example_{idx}",
+                            use_container_width=True,
+                            help=example  # Полный текст в подсказке
+                        ):
+                            # Сохраняем выбранный пример в session_state
+                            st.session_state['selected_example'] = example
+                            st.rerun()
     
     # Отображаем историю чата
     for msg in messages:
@@ -385,7 +489,13 @@ def show_student_chat():
     
     # Поле для нового вопроса или ответа на практическое задание
     placeholder_text = "Введите ответ на практическое задание..." if pending_task else "Задайте вопрос по учебнику..."
-    user_query = st.chat_input(placeholder_text)
+    
+    # Проверяем, был ли выбран пример
+    if st.session_state.get('selected_example'):
+        user_query = st.session_state['selected_example']
+        st.session_state['selected_example'] = None  # Очищаем после использования
+    else:
+        user_query = st.chat_input(placeholder_text)
     
     if user_query:
         # Если есть незавершенное задание, обрабатываем ответ
@@ -407,9 +517,12 @@ def show_student_chat():
                         preprompt_mode=selected_mode
                     )
                     
+                    # Формируем текст ответа для сохранения
+                    response_text = evaluation_result['evaluation']
+                    
                     st.write(evaluation_result['evaluation'])
                     
-                    # Сохраняем оценку
+                    # Сохраняем оценку в таблицу практических заданий
                     if evaluation_result['grade']:
                         submit_practice_answer(
                             task_id=pending_task['id'],
@@ -424,6 +537,13 @@ def show_student_chat():
                             st.info("Отлично! Следующее задание будет сложнее.")
                         elif evaluation_result['grade'] <= 2:
                             st.info("Попробуйте еще раз. Следующее задание будет того же уровня.")
+                    
+                    # Сохраняем сообщение в БД, чтобы оно не исчезло после rerun
+                    add_message(
+                        chat_id=chat_id,
+                        student_query=user_query,
+                        llm_response=response_text
+                    )
             
             st.rerun()
         
@@ -467,7 +587,7 @@ def show_student_chat():
                         )
                         
                         if not task_result.get('error') and task_result.get('task_text'):
-                            # Сохраняем практическое задание
+                            # Сохраняем практическое задание в таблицу practice_tasks
                             task_id = add_practice_task(
                                 chat_id=chat_id,
                                 original_message_id=last_message['id'],
@@ -476,12 +596,22 @@ def show_student_chat():
                                 complexity_level=complexity
                             )
                             
-                            st.write(f"**Практическое задание:**\n\n{task_result['task_text']}")
-                            if task_result.get('hint'):
-                                st.info(f"**Подсказка:** {task_result['hint']}")
-                            st.caption("Введите ваш ответ ниже")
+                            # Сохраняем только согласие пользователя как сообщение
+                            add_message(
+                                chat_id=chat_id,
+                                student_query=user_query,
+                                llm_response="Генерирую практическое задание..."
+                            )
                         else:
-                            st.error("Не удалось сгенерировать практическое задание. Попробуйте позже.")
+                            error_msg = "Не удалось сгенерировать практическое задание. Попробуйте позже."
+                            st.error(error_msg)
+                            
+                            # Сохраняем ошибку как сообщение
+                            add_message(
+                                chat_id=chat_id,
+                                student_query=user_query,
+                                llm_response=error_msg
+                            )
                 
                 st.rerun()
             

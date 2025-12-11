@@ -12,9 +12,9 @@ class OCRHandler:
     def __init__(self, lang='ru', use_gpu=False):
         self.ocr = PaddleOCR(
             use_angle_cls=True,
-            lang='en',  # Попробуем английскую модель
+            lang=lang,  # Используем переданный язык
             use_gpu=use_gpu,
-            show_log=True,  # Включаем логи для отладки
+            show_log=False,  # Отключаем логи для чистоты вывода
             det_model_dir=None,  # Используем встроенную модель
             rec_model_dir=None,  # Используем встроенную модель
             cls_model_dir=None   # Используем встроенную модель

@@ -22,6 +22,22 @@ class TesseractHandler:
         
         if tesseract_cmd:
             pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+            # Устанавливаем путь к tessdata
+            import os
+            tessdata_dir = Path(tesseract_cmd).parent / 'tessdata'
+            if tessdata_dir.exists() and (tessdata_dir / 'rus.traineddata').exists():
+                os.environ['TESSDATA_PREFIX'] = str(tessdata_dir)
+            else:
+                # Пробуем найти в стандартных местах
+                possible_tessdata = [
+                    Path('C:/Program Files/Tesseract-OCR/tessdata'),
+                    Path('C:/Program Files (x86)/Tesseract-OCR/tessdata'),
+                    Path('D:/Tesseract-OCR/tessdata'),
+                ]
+                for td in possible_tessdata:
+                    if td.exists() and (td / 'rus.traineddata').exists():
+                        os.environ['TESSDATA_PREFIX'] = str(td)
+                        break
         
         # Проверяем доступность Tesseract
         try:
